@@ -1,0 +1,69 @@
+// dashbord
+
+
+@extends('layouts.app')
+
+@section('content')
+<div class="container mx-auto">
+    <h1 class="text-2xl font-bold mb-4">Tableau de Bord</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        @if(Auth::user()->hasRole('Freelancer'))
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Contacts</h2>
+                <p>{{ $data['contacts'] }} contacts actifs</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Rendez-vous</h2>
+                <p>{{ $data['rdvs'] }} RDV planifiés</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Devis</h2>
+                <p>{{ $data['devis'] }} devis créés</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Commissions</h2>
+                <p>{{ $data['commissions'] }} demandes</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Abonnement</h2>
+                <p>{{ $data['abonnement'] ? $data['abonnement']->plan : 'Aucun' }}</p>
+            </div>
+        @elseif(Auth::user()->hasRole('Account Manager'))
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Rendez-vous</h2>
+                <p>{{ $data['rdvs'] }} RDV attribués</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Devis</h2>
+                <p>{{ $data['devis'] }} devis gérés</p>
+            </div>
+        @else
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Utilisateurs</h2>
+                <p>{{ $data['users'] }} utilisateurs</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Contacts</h2>
+                <p>{{ $data['contacts'] }} contacts</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Rendez-vous</h2>
+                <p>{{ $data['rdvs'] }} RDV</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Devis</h2>
+                <p>{{ $data['devis'] }} devis</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Commissions</h2>
+                <p>{{ $data['commissions'] }} demandes</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h2 class="text-lg font-semibold">Abonnements</h2>
+                <p>{{ $data['abonnements'] }} abonnements</p>
+            </div>
+        @endif
+    </div>
+</div>
+@endsection
