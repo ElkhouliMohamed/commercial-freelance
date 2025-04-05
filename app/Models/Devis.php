@@ -4,29 +4,33 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Devis extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     // Fillable attributes for mass assignment
     protected $fillable = [
-        'rdv_id',        // Lien vers le rendez-vous
-        'contact_id',    // Lien vers le contact
-        'freelancer_id', // Lien vers le freelancer
-        'service_id',    // Lien vers le service
-        'montant',       // Montant total du devis
-        'statut',        // Statut (Brouillon, Valide, Expiré, etc.)
-        'date_validite', // Date de validité
-        'notes',         // Notes ou commentaires
+        'rdv_id',        // Link to the appointment
+        'contact_id',    // Link to the contact
+        'freelancer_id', // Link to the freelancer (corrected from 'freelance_id')
+        'service_id',    // Link to the service
+        'montant',       // Total amount of the quote
+        'statut',        // Status (Draft, Valid, Expired, etc.)
+        'date_validite', // Validity date
+        'notes',         // Notes or comments
     ];
 
-    // Casts pour les types de données
+    // Casts for data types
     protected $casts = [
         'montant' => 'float',
         'date_validite' => 'date',
         'statut' => 'string',
     ];
+
+    // Dates to handle (including soft deletes)
+    protected $dates = ['deleted_at', 'date_validite'];
 
     /**
      * Relationship: Devis belongs to an RDV.
@@ -45,11 +49,11 @@ class Devis extends Model
     }
 
     /**
-     * Relationship: Devis belongs to a freelancer.
+     * Relationship: Devis belongs to a Freelancer (User).
      */
     public function freelancer()
     {
-        return $this->belongsTo(User::class, 'freelance_id');
+        return $this->belongsTo(User::class, 'freelancer_id');
     }
 
     /**
@@ -75,4 +79,19 @@ class Devis extends Model
     {
         return $query->where('date_validite', '>=', now());
     }
+
+    /**
+     * Scope: Filter devis by freelancer.
+     */
+    public function scopeByFreelancer($query, $freelancerId)
+    {
+        return $query->where('freelancer_id', $freelancerId);
+    }
+
+    /**
+     * Default status for new records.
+     */
+    protected $attributes = [
+        'statut' => 'Brouillon',
+    ];
 }

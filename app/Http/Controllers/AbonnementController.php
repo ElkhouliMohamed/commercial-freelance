@@ -17,7 +17,7 @@ class AbonnementController extends Controller
 
     public function index()
     {
-        $abonnements = Abonnement::all();
+        $abonnements = Abonnement::paginate(10); // Paginate results with 10 items per page
         return view('abonnements.index', compact('abonnements'));
     }
 

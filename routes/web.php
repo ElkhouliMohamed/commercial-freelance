@@ -9,6 +9,7 @@ use App\Http\Controllers\DevisController;
 use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\AbonnementController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\UserController;
 
 Route::middleware(['guest'])->group(function () {
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
@@ -61,6 +62,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/commissions/create', [CommissionController::class, 'create'])->name('commissions.create');
         Route::post('/commissions', [CommissionController::class, 'store'])->name('commissions.store');
         Route::put('/commissions/{commission}/approve', [CommissionController::class, 'approve'])->name('commissions.approve');
+    });
+
+    Route::middleware(['role:Super Admin'])->group(function () {
+        Route::resource('users', UserController::class)->except(['show']);
     });
 
     Route::resource('contacts', ContactController::class);

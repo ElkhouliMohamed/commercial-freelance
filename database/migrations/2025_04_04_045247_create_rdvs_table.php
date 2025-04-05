@@ -29,6 +29,8 @@ return new class extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('rdvs');
+        // Drop the dependent table first
+        Schema::dropIfExists('devis'); // Drop the `devis` table before `rdvs`
+        Schema::dropIfExists('rdvs'); // Then drop the `rdvs` table
     }
 };

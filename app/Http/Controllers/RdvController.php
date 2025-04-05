@@ -7,14 +7,19 @@ use App\Models\Contact;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Notifications\AssignedToRdv;
-
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\RdvUpdated;
+use App\Notifications\RdvCancelled;
 
 class RdvController extends Controller
 {
     public function __construct()
     {
-        // Restrict access to authenticated users with the "Freelancer" role
-        $this->middleware(['auth', 'role:Freelancer|Account Manager']);
+        $this->middleware(['auth', 'verified']);
+        $this->authorizeResource(Rdv::class, 'rdv', [
+            'except' => ['index']
+        ]);
     }
 
     /**
@@ -23,19 +28,22 @@ class RdvController extends Controller
     public function index()
     {
         $user = auth()->user();
+        $rdvs = Rdv::query()
+            ->with(['contact', 'freelancer', 'manager'])
+            ->when($user->hasRole('Freelancer'), function ($query) use ($user) {
+                return $query->where('freelancer_id', $user->id);
+            })
+            ->when($user->hasRole('Account Manager'), function ($query) use ($user) {
+                return $query->where('manager_id', $user->id);
+            })
+            ->orderBy('date', 'asc')
+            ->paginate(10);
 
-        if ($user->hasRole('Freelancer')) {
-            // Show RDVs assigned to the freelancer
-            $rdvs = Rdv::where('freelancer_id', $user->id)->with(['contact'])->get();
-        } elseif ($user->hasRole('Account Manager')) {
-            // Show RDVs assigned to the account manager
-            $rdvs = Rdv::where('manager_id', $user->id)->with(['contact'])->get();
-        } else {
-            // Redirect if the user does not have the required role
-            return redirect()->route('dashboard')->with('error', 'Accès non autorisé.');
-        }
-
-        return view('rdvs.index', compact('rdvs'));
+        return view('rdvs.index', [
+            'rdvs' => $rdvs,
+            'upcomingCount' => Rdv::upcoming()->count(),
+            'pastCount' => Rdv::past()->count(),
+        ]);
     }
 
     /**
@@ -43,12 +51,16 @@ class RdvController extends Controller
      */
     public function create()
     {
-        // Get active contacts for the authenticated freelancer
         $contacts = Contact::where('freelancer_id', auth()->id())
-            ->where('statut', 'actif')
+            ->active()
             ->get();
 
-        return view('rdvs.create', compact('contacts'));
+        return view('rdvs.create', [
+            'contacts' => $contacts,
+            'rdvTypes' => Rdv::getTypeOptions(),
+            'minDate' => now()->addDay()->format('Y-m-d'),
+            'maxDate' => now()->addMonths(3)->format('Y-m-d'),
+        ]);
     }
 
     /**
@@ -56,31 +68,41 @@ class RdvController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'contact_id' => 'required|exists:contacts,id',
-            'date' => 'required|date|after:now',
-            'type' => 'required|string|max:255',
+        $validated = $request->validate([
+            'contact_id' => 'required|exists:contacts,id,freelancer_id,' . auth()->id(),
+            'date' => 'required|date|after:now|before:' . now()->addMonths(3),
+            'type' => 'required|in:' . implode(',', Rdv::getTypeOptions()),
+            'notes' => 'nullable|string|max:500',
+            'location' => 'required_if:type,' . Rdv::TYPE_PHYSICAL . '|string|max:255',
         ]);
 
-        $manager = User::role('Account Manager')->inRandomOrder()->first();
+        $manager = User::role('Account Manager')
+            ->where('is_active', true)
+            ->inRandomOrder()
+            ->firstOrFail();
 
-        if (!$manager) {
-            return redirect()->route('rdvs.index')->with('error', 'Aucun Account Manager disponible.');
-        }
-
-        $rdv = Rdv::create([
-            'contact_id' => $request->contact_id,
+        $rdv = Rdv::create($validated + [
             'freelancer_id' => auth()->id(),
             'manager_id' => $manager->id,
-            'date' => $request->date,
-            'type' => $request->type,
-            'statut' => 'planifié',
+            'statut' => Rdv::STATUS_PLANNED,
         ]);
 
-        // Send notification to the assigned Account Manager
         $manager->notify(new AssignedToRdv($rdv));
 
-        return redirect()->route('rdvs.index')->with('success', 'Rendez-vous créé avec succès et assigné à un Account Manager.');
+        return redirect()->route('rdvs.index')
+            ->with('success', 'Rendez-vous créé avec succès et assigné à un Account Manager.');
+    }
+
+    /**
+     * Display the specified RDV.
+     */
+    public function show(Rdv $rdv)
+    {
+        Gate::authorize('view', $rdv);
+
+        return view('rdvs.show', [
+            'rdv' => $rdv->load(['contact', 'freelancer', 'manager', 'devis']),
+        ]);
     }
 
     /**
@@ -88,16 +110,18 @@ class RdvController extends Controller
      */
     public function edit(Rdv $rdv)
     {
-        // Ensure the RDV belongs to the authenticated freelancer
-        if ($rdv->freelancer_id !== auth()->id()) {
-            return redirect()->route('rdvs.index')->with('error', 'Accès non autorisé.');
-        }
-
         $contacts = Contact::where('freelancer_id', auth()->id())
-            ->where('statut', 'actif')
+            ->active()
             ->get();
 
-        return view('rdvs.edit', compact('rdv', 'contacts'));
+        return view('rdvs.edit', [
+            'rdv' => $rdv,
+            'contacts' => $contacts,
+            'rdvTypes' => Rdv::getTypeOptions(),
+            'statusOptions' => Rdv::getStatusOptions(),
+            'minDate' => now()->addDay()->format('Y-m-d'),
+            'maxDate' => now()->addMonths(3)->format('Y-m-d'),
+        ]);
     }
 
     /**
@@ -105,26 +129,46 @@ class RdvController extends Controller
      */
     public function update(Request $request, Rdv $rdv)
     {
-        // Ensure the RDV belongs to the authenticated freelancer
-        if ($rdv->freelancer_id !== auth()->id()) {
-            return redirect()->route('rdvs.index')->with('error', 'Accès non autorisé.');
+        $validated = $request->validate([
+            'contact_id' => 'required|exists:contacts,id,freelancer_id,' . auth()->id(),
+            'date' => 'required|date|after:now|before:' . now()->addMonths(3),
+            'type' => 'required|in:' . implode(',', Rdv::getTypeOptions()),
+            'statut' => 'required|in:' . implode(',', Rdv::getStatusOptions()),
+            'notes' => 'nullable|string|max:500',
+            'location' => 'required_if:type,' . Rdv::TYPE_PHYSICAL . '|string|max:255',
+        ]);
+
+        $originalStatus = $rdv->statut;
+        $rdv->update($validated);
+
+        // Notify stakeholders about important changes
+        if ($originalStatus !== $rdv->statut) {
+            $this->handleStatusChangeNotification($rdv, $originalStatus);
+        } else {
+            Notification::send([$rdv->manager, $rdv->freelancer], new RdvUpdated($rdv));
         }
 
-        // Validate the incoming request
-        $request->validate([
-            'contact_id' => 'required|exists:contacts,id',
-            'date' => 'required|date|after:now',
-            'type' => 'required|string|max:255',
-        ]);
+        return redirect()->route('rdvs.index')
+            ->with('success', 'Rendez-vous mis à jour avec succès.');
+    }
 
-        // Update the RDV
-        $rdv->update([
-            'contact_id' => $request->contact_id,
-            'date' => $request->date,
-            'type' => $request->type,
-        ]);
+    /**
+     * Cancel the specified RDV.
+     */
+    public function cancel(Rdv $rdv)
+    {
+        Gate::authorize('update', $rdv);
 
-        return redirect()->route('rdvs.index')->with('success', 'Rendez-vous mis à jour avec succès.');
+        if (!$rdv->canBeCancelled()) {
+            return back()->with('error', 'Ce rendez-vous ne peut pas être annulé.');
+        }
+
+        $rdv->update(['statut' => Rdv::STATUS_CANCELLED]);
+
+        Notification::send([$rdv->manager, $rdv->contact], new RdvCancelled($rdv));
+
+        return redirect()->route('rdvs.index')
+            ->with('success', 'Rendez-vous annulé avec succès.');
     }
 
     /**
@@ -132,13 +176,32 @@ class RdvController extends Controller
      */
     public function destroy(Rdv $rdv)
     {
-        // Ensure the RDV belongs to the authenticated freelancer
-        if ($rdv->freelancer_id !== auth()->id()) {
-            return redirect()->route('rdvs.index')->with('error', 'Accès non autorisé.');
-        }
-
         $rdv->delete();
 
-        return redirect()->route('rdvs.index')->with('success', 'Rendez-vous supprimé avec succès.');
+        return redirect()->route('rdvs.index')
+            ->with('success', 'Rendez-vous supprimé avec succès.');
+    }
+
+    /**
+     * Handle notifications for RDV status changes.
+     */
+    protected function handleStatusChangeNotification(Rdv $rdv, string $originalStatus): void
+    {
+        switch ($rdv->statut) {
+            case Rdv::STATUS_CANCELLED:
+                Notification::send([$rdv->manager, $rdv->contact], new RdvCancelled($rdv));
+                break;
+
+            case Rdv::STATUS_CONFIRMED:
+                Notification::send([$rdv->freelancer, $rdv->manager], new RdvConfirmed($rdv));
+                break;
+
+            case Rdv::STATUS_COMPLETED:
+                Notification::send([$rdv->manager], new RdvCompleted($rdv));
+                break;
+
+            default:
+                Notification::send([$rdv->manager, $rdv->freelancer], new RdvUpdated($rdv));
+        }
     }
 }

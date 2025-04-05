@@ -39,28 +39,9 @@ return new class extends Migration
             $table->integer('last_activity')->index();
         });
 
-        // Create the Super Admin role if it doesn't exist
-        if (!Role::where('name', 'Super Admin')->exists()) {
-            Role::create(['name' => 'Super Admin']);
-        }
+        
 
-        // Insert default Super Admin account if it doesn't exist
-        if (!DB::table('users')->where('email', 'factoryadlab@gmail.com')->exists()) {
-            $superAdminId = DB::table('users')->insertGetId([
-                'name' => 'Super Admin',
-                'email' => 'factoryadlab@gmail.com',
-                'password' => Hash::make('Admin@2025'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // Assign the Super Admin role
-            DB::table('model_has_roles')->insert([
-                'role_id' => Role::where('name', 'Super Admin')->first()->id,
-                'model_type' => 'App\Models\User',
-                'model_id' => $superAdminId,
-            ]);
-        }
+       
     }
 
     /**

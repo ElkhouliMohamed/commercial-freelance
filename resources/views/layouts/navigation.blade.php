@@ -38,21 +38,21 @@
             </a>
         </li>
         @endrole
-        @can('manage users')
-            <li>
-                <a href="#" class="flex items-center px-4 py-3 rounded-lg hover:bg-gray-800 hover:text-yellow-400 transition">
-                    <i class="fas fa-users text-xl"></i>
-                    <span class="ml-3 menu-text">Gestion des Utilisateurs</span>
-                </a>
-            </li>
-        @endcan
+        @role('Super Admin')
+        <li>
+            <a href="{{ route('users.index') }}" class="flex items-center px-4 py-3 rounded-lg hover:bg-gray-800 hover:text-yellow-400 transition">
+                <i class="fas fa-users-cog text-xl"></i>
+                <span class="ml-3 menu-text">Gestion des Utilisateurs</span>
+            </a>
+        </li>
+        @endrole
         @can('manage subscriptions')
-            <li>
-                <a href="#" class="flex items-center px-4 py-3 rounded-lg hover:bg-gray-800 hover:text-yellow-400 transition">
-                    <i class="fas fa-file-contract text-xl"></i>
-                    <span class="ml-3 menu-text">Gestion des Abonnements</span>
-                </a>
-            </li>
+        <li>
+            <a href="{{ route('abonnements.index') }}" class="flex items-center px-4 py-3 rounded-lg hover:bg-gray-800 hover:text-yellow-400 transition">
+                <i class="fas fa-file-contract text-xl"></i>
+                <span class="ml-3 menu-text">Gestion des Abonnements</span>
+            </a>
+        </li>
         @endcan
     </ul>
 

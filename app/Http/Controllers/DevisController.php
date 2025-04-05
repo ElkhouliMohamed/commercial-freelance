@@ -14,7 +14,6 @@ class DevisController extends Controller
 {
     public function __construct()
     {
-        // Apply middleware to ensure only authenticated users can access these routes
         $this->middleware('auth');
     }
 
@@ -23,11 +22,9 @@ class DevisController extends Controller
      */
     public function index()
     {
-        // Check if the user has the required role
-        $this->authorizeRole(['Freelancer', 'Admin','Account Manager']);
+        $this->authorizeRole(['Freelancer', 'Admin', 'Account Manager']);
 
-        // Retrieve all devis with related RDV, Contact, and Freelancer data
-        $devis = Devis::with(['rdv', 'contact', 'freelancer'])->get();
+        $devis = Devis::with(['rdv', 'contact', 'freelancer', 'service'])->paginate(10);
 
         return view('devis.index', compact('devis'));
     }
@@ -37,13 +34,11 @@ class DevisController extends Controller
      */
     public function create($rdvId)
     {
-        // Fetch the RDV details
         $rdv = Rdv::with(['contact', 'freelancer'])->findOrFail($rdvId);
+        $freelancers = User::role('Freelancer')->get();
+        $services = Service::all(); // Assuming you have a Service model
 
-        // Fetch all freelancers
-        $freelancers = User::role('Freelancer')->get(); // Assuming Spatie roles are used
-
-        return view('devis.create', compact('rdv', 'freelancers'));
+        return view('devis.create', compact('rdv', 'freelancers', 'services'));
     }
 
     /**
@@ -54,10 +49,12 @@ class DevisController extends Controller
         $validated = $request->validate([
             'rdv_id' => 'required|exists:rdvs,id',
             'contact_id' => 'required|exists:contacts,id',
-            'freelance_id' => 'nullable|exists:users,id',
-            'montant' => 'required|numeric',
-            'statut' => 'required|string',
-            'notes' => 'nullable|string',
+            'freelancer_id' => 'nullable|exists:users,id',
+            'service_id' => 'required|exists:services,id',
+            'montant' => 'required|numeric|min:0',
+            'statut' => 'required|string|in:Brouillon,En Attente,Accepté,Refusé,Annulé',
+            'date_validite' => 'required|date|after:today',
+            'notes' => 'nullable|string|max:1000',
         ]);
 
         Devis::create($validated);
@@ -68,20 +65,26 @@ class DevisController extends Controller
     /**
      * Show the form for editing the specified devis.
      */
-
     public function edit(Devis $devis)
     {
-        $freelancers = User::role('Freelancer')->get(); // Assuming Spatie roles are used
-        return view('devis.edit', compact('devis', 'freelancers'));
+        $freelancers = User::role('Freelancer')->get();
+        $services = Service::all();
+
+        return view('devis.edit', compact('devis', 'freelancers', 'services'));
     }
 
+    /**
+     * Update the specified devis in storage.
+     */
     public function update(Request $request, Devis $devis)
     {
         $validated = $request->validate([
-            'freelance_id' => 'nullable|exists:users,id',
-            'montant' => 'required|numeric',
-            'statut' => 'required|string',
-            'notes' => 'nullable|string',
+            'freelancer_id' => 'nullable|exists:users,id',
+            'service_id' => 'required|exists:services,id',
+            'montant' => 'required|numeric|min:0',
+            'statut' => 'required|string|in:Brouillon,En Attente,Accepté,Refusé,Annulé',
+            'date_validite' => 'required|date|after_or_equal:today',
+            'notes' => 'nullable|string|max:1000',
         ]);
 
         $devis->update($validated);
@@ -89,12 +92,9 @@ class DevisController extends Controller
         return redirect()->route('devis.index')->with('success', 'Devis mis à jour avec succès.');
     }
 
-
     /**
-     * Remove the specified devis from storage.
+     * Remove the specified devis from storage (soft delete).
      */
-
-
     public function destroy(Devis $devis)
     {
         try {
@@ -102,9 +102,9 @@ class DevisController extends Controller
 
             Log::info("Deleting devis with ID: " . $devis->id);
 
-            $devis->forceDelete();
+            $devis->delete(); // Soft delete instead of forceDelete
 
-            Log::info("Devis deleted successfully.");
+            Log::info("Devis soft deleted successfully.");
 
             return redirect()->route('devis.index')->with('success', 'Devis supprimé avec succès.');
         } catch (\Exception $e) {
@@ -113,6 +113,9 @@ class DevisController extends Controller
         }
     }
 
+    /**
+     * Authorize the user based on roles.
+     */
     private function authorizeRole(array $roles)
     {
         if (!auth()->user()->hasAnyRole($roles)) {
@@ -127,8 +130,4 @@ class DevisController extends Controller
     {
         return view('devis.show', compact('devis'));
     }
-
-    /**
-     * Authorize the user based on roles.
-     */
 }
