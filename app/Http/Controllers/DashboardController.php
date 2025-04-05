@@ -45,7 +45,7 @@ class DashboardController extends Controller
             $data['devis'] = Devis::whereIn('rdv_id', Rdv::where('freelancer_id', $user->id)->pluck('id'))->count();
             $data['commissions'] = Commission::where('freelancer_id', $user->id)->count();
             $data['abonnement'] = Abonnement::where('freelancer_id', operator: $user->id)->first();
-            $data['type_user'] = "freelancer";
+            $data['type_user'] = "Freelancer";
         } elseif ($user->hasRole('Account Manager')) {
             $data['rdvs'] = Rdv::where('manager_id', $user->id)->count();
             $data['devis'] = Devis::whereIn('rdv_id', Rdv::where('manager_id', $user->id)->pluck('id'))->count();

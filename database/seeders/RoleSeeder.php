@@ -24,6 +24,7 @@ class RoleSeeder extends Seeder
             'manage contacts',
             'manage rdvs',
             'create devis',
+            'update devis', // Add this
             'request commission',
             'manage subscriptions',
         ];
@@ -55,6 +56,7 @@ class RoleSeeder extends Seeder
             'manage contacts',
             'manage rdvs',
             'create devis',
+            'update devis', // Add this
         ]);
 
         // Freelancer can manage contacts, create rdvs, and request commission

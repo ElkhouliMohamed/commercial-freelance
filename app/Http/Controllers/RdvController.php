@@ -6,6 +6,8 @@ use App\Models\Rdv;
 use App\Models\Contact;
 use App\Models\User;
 use Illuminate\Http\Request;
+use App\Notifications\AssignedToRdv;
+
 
 class RdvController extends Controller
 {
@@ -54,27 +56,31 @@ class RdvController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate the incoming request
         $request->validate([
             'contact_id' => 'required|exists:contacts,id',
-            'date' => 'required|date|after:now', // Ensure the date is in the future
+            'date' => 'required|date|after:now',
             'type' => 'required|string|max:255',
         ]);
 
-        // Assign an Account Manager (simplified logic)
-        $manager = User::role('Account Manager')->inRandomOrder()->first(); // Randomly assign a manager
+        $manager = User::role('Account Manager')->inRandomOrder()->first();
 
-        // Create the RDV
-        Rdv::create([
+        if (!$manager) {
+            return redirect()->route('rdvs.index')->with('error', 'Aucun Account Manager disponible.');
+        }
+
+        $rdv = Rdv::create([
             'contact_id' => $request->contact_id,
             'freelancer_id' => auth()->id(),
-            'manager_id' => $manager ? $manager->id : null,
+            'manager_id' => $manager->id,
             'date' => $request->date,
             'type' => $request->type,
             'statut' => 'planifié',
         ]);
 
-        return redirect()->route('rdvs.index')->with('success', 'Rendez-vous planifié avec succès.');
+        // Send notification to the assigned Account Manager
+        $manager->notify(new AssignedToRdv($rdv));
+
+        return redirect()->route('rdvs.index')->with('success', 'Rendez-vous créé avec succès et assigné à un Account Manager.');
     }
 
     /**

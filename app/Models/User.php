@@ -113,7 +113,8 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function getFullNameAttribute()
     {
-        return $this->name; // Update if you have separate `first_name` and `last_name` fields.
+        // Update this if you have separate first_name and last_name fields
+        return $this->name; // Adjust if needed (e.g., explode(' ', $this->name) for first/last name)
     }
 
     // ============================
@@ -125,7 +126,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function hasRoleName($role)
     {
-        return $this->hasRole($role);
+        return $this->hasRole($role); // Already provided by HasRoles trait
     }
 
     /**
@@ -133,10 +134,15 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function assignUserRole($role)
     {
-        $this->assignRole($role);
+        $this->assignRole($role); // Already provided by HasRoles trait
     }
+
+    // Removed incorrect freelancer() relationship
+    // Replaced with a potential manager relationship if needed (commented below)
+    /*
     public function freelancer()
     {
-        return $this->belongsTo(User::class, 'freelancer_id');
+        return $this->belongsTo(User::class, 'freelance_id');
     }
+    */
 }

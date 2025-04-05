@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Illuminate\View\View;
+use Spatie\Permission\Models\Role;
 
 class RegisteredUserController extends Controller
 {
@@ -31,26 +32,26 @@ class RegisteredUserController extends Controller
     {
         // Validate the incoming request
         $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:'.User::class],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|confirmed|min:8',
         ]);
 
         // Create the user
         $user = User::create([
             'name' => $request->name,
-            'email' => strtolower($request->email), // Ensure email is stored in lowercase
+            'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
 
-        // Assign a default role to the user (e.g., 'Freelancer')
-        $user->assignRole('Freelancer'); // Ensure the role exists in your database
-
-        // Fire the Registered event
-        event(new Registered($user));
+        // Assign the "Freelancer" role to the user
+        $user->assignRole('Freelancer');
 
         // Log the user in
         Auth::login($user);
+
+        // Fire the registered event
+        event(new Registered($user));
 
         // Redirect to the dashboard
         return redirect()->route('dashboard');

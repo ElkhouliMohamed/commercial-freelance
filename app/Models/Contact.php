@@ -16,6 +16,11 @@ class Contact extends Model
         'prenom',
         'email',
         'telephone',
+        'adresse',         // New field
+        'nom_entreprise',  // New field
+        'instagram',       // New field
+        'facebook',        // New field
+        'siteweb',         // New field
         'freelancer_id',
         'statut',
     ];

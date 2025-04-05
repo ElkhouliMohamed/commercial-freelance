@@ -10,18 +10,6 @@ use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\AbonnementController;
 use App\Http\Controllers\DashboardController;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
-|
-*/
-
-// Routes d'authentification (Laravel Breeze)
 Route::middleware(['guest'])->group(function () {
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredUserController::class, 'store']);
@@ -46,14 +34,18 @@ Route::middleware(['auth'])->group(function () {
     // Freelancer Dashboard
     Route::middleware(['role:Freelancer'])->group(function () {
         Route::get('/freelancer/dashboard', [DashboardController::class, 'index'])->name('freelancer.dashboard');
+        
     });
 
     // Account Manager Dashboard
     Route::middleware(['role:Account Manager'])->group(function () {
         Route::get('/account-manager/dashboard', [DashboardController::class, 'index'])->name('account_manager.dashboard');
-        Route::resource('devis', DevisController::class);
-        Route::get('/rdvs/{rdv}/devis/create', [DevisController::class, 'create'])->name('devis.create');
-        Route::put('/devis/{devis}/update-status', [DevisController::class, 'updateStatus'])->name('devis.updateStatus');
+        Route::resource('devis', DevisController::class)->except(['create']);
+        Route::get('/devis/create/{rdvId}', [DevisController::class, 'create'])->name('devis.create');
+        Route::get('/devis/create/{rdvId?}', [DevisController::class, 'create'])->name('devis.create');
+        Route::resource('contacts', ContactController::class);
+        Route::put('/contacts/restore/{id}', [ContactController::class, 'restore'])->name('contacts.restore');
+        Route::get('/devis/create/{rdvId}', [DevisController::class, 'create'])->name('devis.create');
     });
 
     // Admin Dashboard
@@ -70,6 +62,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/commissions', [CommissionController::class, 'store'])->name('commissions.store');
         Route::put('/commissions/{commission}/approve', [CommissionController::class, 'approve'])->name('commissions.approve');
     });
+
+    Route::resource('contacts', ContactController::class);
 });
 
 // Route pour les utilisateurs non connectés (page d'accueil ou autre)

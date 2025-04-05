@@ -9,19 +9,24 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
+    public function up()
     {
         Schema::create('contacts', function (Blueprint $table) {
             $table->id();
-            $table->string('nom'); // Contact's last name
-            $table->string('prenom'); // Contact's first name
-            $table->string('email')->unique(); // Contact's email
-            $table->string('telephone')->nullable(); // Contact's phone number
-            $table->unsignedBigInteger('freelancer_id'); // Foreign key for the freelancer
-            $table->foreign('freelancer_id')->references('id')->on('users')->onDelete('cascade'); // Foreign key constraint
-            $table->enum('statut', ['actif', 'inactif'])->default('actif'); // Status of the contact
-            $table->softDeletes(); // For soft deletes
+            $table->string('nom');
+            $table->string('prenom');
+            $table->string('email')->nullable(); // Remove unique constraint
+            $table->string('telephone')->nullable();
+            $table->string('adresse')->nullable();
+            $table->string('nom_entreprise')->nullable();
+            $table->string('instagram')->nullable();
+            $table->string('facebook')->nullable();
+            $table->string('siteweb')->nullable();
+            $table->unsignedBigInteger('freelancer_id');
             $table->timestamps();
+            $table->softDeletes();
+
+            $table->foreign('freelancer_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 

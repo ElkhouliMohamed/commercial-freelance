@@ -7,6 +7,8 @@ use App\Models\Contact;
 use App\Models\Rdv;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 class DevisController extends Controller
 {
@@ -22,7 +24,7 @@ class DevisController extends Controller
     public function index()
     {
         // Check if the user has the required role
-        $this->authorizeRole(['Freelancer', 'Admin']);
+        $this->authorizeRole(['Freelancer', 'Admin','Account Manager']);
 
         // Retrieve all devis with related RDV, Contact, and Freelancer data
         $devis = Devis::with(['rdv', 'contact', 'freelancer'])->get();
@@ -66,50 +68,56 @@ class DevisController extends Controller
     /**
      * Show the form for editing the specified devis.
      */
+
     public function edit(Devis $devis)
     {
-        // Check if the user has the required role
-        $this->authorizeRole(['Freelancer', 'Admin']);
-
-        $contacts = Contact::all();
-        $rdvs = Rdv::all();
-
-        return view('devis.edit', compact('devis', 'contacts', 'rdvs'));
+        $freelancers = User::role('Freelancer')->get(); // Assuming Spatie roles are used
+        return view('devis.edit', compact('devis', 'freelancers'));
     }
 
-    /**
-     * Update the specified devis in storage.
-     */
     public function update(Request $request, Devis $devis)
     {
-        // Check if the user has the required role
-        $this->authorizeRole(['Freelancer', 'Admin']);
-
-        // Validate the incoming request
-        $validatedData = $request->validate([
-            'rdv_id' => 'required|exists:rdvs,id',
-            'contact_id' => 'required|exists:contacts,id',
-            'montant' => 'required|numeric|min:0',
-            'statut' => 'required|in:en attente,validé,refusé',
+        $validated = $request->validate([
+            'freelance_id' => 'nullable|exists:users,id',
+            'montant' => 'required|numeric',
+            'statut' => 'required|string',
+            'notes' => 'nullable|string',
         ]);
 
-        // Update the devis
-        $devis->update($validatedData);
+        $devis->update($validated);
 
         return redirect()->route('devis.index')->with('success', 'Devis mis à jour avec succès.');
     }
 
+
     /**
      * Remove the specified devis from storage.
      */
+
+
     public function destroy(Devis $devis)
     {
-        // Check if the user has the required role
-        $this->authorizeRole(['Freelancer', 'Admin']);
+        try {
+            Gate::authorize('delete-devis', $devis);
 
-        $devis->delete();
+            Log::info("Deleting devis with ID: " . $devis->id);
 
-        return redirect()->route('devis.index')->with('success', 'Devis supprimé avec succès.');
+            $devis->forceDelete();
+
+            Log::info("Devis deleted successfully.");
+
+            return redirect()->route('devis.index')->with('success', 'Devis supprimé avec succès.');
+        } catch (\Exception $e) {
+            Log::error("Error deleting devis: " . $e->getMessage());
+            return redirect()->back()->with('error', 'Une erreur s’est produite lors de la suppression.');
+        }
+    }
+
+    private function authorizeRole(array $roles)
+    {
+        if (!auth()->user()->hasAnyRole($roles)) {
+            abort(403, 'Accès non autorisé.');
+        }
     }
 
     /**
@@ -123,10 +131,4 @@ class DevisController extends Controller
     /**
      * Authorize the user based on roles.
      */
-    private function authorizeRole(array $roles)
-    {
-        if (!auth()->user()->hasAnyRole($roles)) {
-            return redirect()->route('dashboard')->with('error', 'Accès non autorisé.');
-        }
-    }
 }

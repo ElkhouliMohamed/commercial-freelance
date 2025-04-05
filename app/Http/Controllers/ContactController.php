@@ -4,22 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Models\Contact;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ContactController extends Controller
 {
     public function __construct()
     {
         // Apply middleware to ensure only authenticated freelancers can access these routes
-        $this->middleware(['auth', 'role:Freelancer|Account Manager|Admin|Super Admin']);
+        $this->middleware(['auth']);
     }
 
     /**
-     * Display a listing of the contacts.
+     * Display a listing of the contacts with pagination.
      */
     public function index()
     {
-        // Retrieve all contacts (including soft-deleted ones) for the authenticated freelancer
-        $contacts = auth()->user()->contacts()->withTrashed()->get();
+        // Retrieve paginated contacts (including soft-deleted ones) for the authenticated user
+        $contacts = Auth::user()->contacts()->withTrashed()->paginate(10); // Adjust the number as needed
 
         return view('contacts.index', compact('contacts'));
     }
@@ -37,25 +38,24 @@ class ContactController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate the incoming request
-        $request->validate([
+        $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
-            'email' => 'required|email|unique:contacts,email',
+            'email' => 'nullable|email|max:255',
             'telephone' => 'nullable|string|max:20',
+            'adresse' => 'nullable|string|max:255',
+            'nom_entreprise' => 'nullable|string|max:255',
+            'instagram' => 'nullable|string|max:255',
+            'facebook' => 'nullable|string|max:255',
+            'siteweb' => 'nullable|string|max:255',
+            'statut' => 'nullable|string|in:actif,archive',
         ]);
 
-        // Create a new contact for the authenticated freelancer
-        Contact::create([
-            'nom' => $request->nom,
-            'prenom' => $request->prenom,
-            'email' => $request->email,
-            'telephone' => $request->telephone,
-            'freelancer_id' => auth()->id(),
-            'statut' => 'actif',
-        ]);
+        // Associate the contact with the authenticated user
+        $validated['freelancer_id'] = Auth::id(); // This ensures the contact is linked to the logged-in user
+        Contact::create($validated);
 
-        return redirect()->route('contacts.index')->with('success', 'Contact ajouté avec succès.');
+        return redirect()->route('contacts.index')->with('success', 'Contact créé avec succès.');
     }
 
     /**
@@ -63,7 +63,7 @@ class ContactController extends Controller
      */
     public function edit(Contact $contact)
     {
-        // Ensure the contact belongs to the authenticated freelancer
+        // Ensure the contact belongs to the authenticated user
         $this->authorize('update', $contact);
 
         return view('contacts.edit', compact('contact'));
@@ -74,20 +74,23 @@ class ContactController extends Controller
      */
     public function update(Request $request, Contact $contact)
     {
-        // Ensure the contact belongs to the authenticated freelancer
         $this->authorize('update', $contact);
 
-        // Validate the incoming request
-        $request->validate([
+        $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
-            'email' => 'required|email|unique:contacts,email,' . $contact->id,
+            'email' => 'nullable|email|max:255',
             'telephone' => 'nullable|string|max:20',
-            'statut' => 'required|in:actif,archive',
+            'adresse' => 'nullable|string|max:255',
+            'nom_entreprise' => 'nullable|string|max:255',
+            'instagram' => 'nullable|string|max:255',
+            'facebook' => 'nullable|string|max:255',
+            'siteweb' => 'nullable|string|max:255',
+            'freelancer_id' => 'nullable|exists:users,id',
+            'statut' => 'nullable|string|in:actif,archive', // Updated to match Blade template
         ]);
 
-        // Update the contact
-        $contact->update($request->all());
+        $contact->update($validated);
 
         return redirect()->route('contacts.index')->with('success', 'Contact mis à jour avec succès.');
     }
@@ -97,7 +100,6 @@ class ContactController extends Controller
      */
     public function destroy(Contact $contact)
     {
-        // Ensure the contact belongs to the authenticated freelancer
         $this->authorize('delete', $contact);
 
         $contact->delete(); // Soft delete
@@ -110,14 +112,22 @@ class ContactController extends Controller
      */
     public function restore($id)
     {
-        // Find the contact (including soft-deleted ones)
         $contact = Contact::withTrashed()->findOrFail($id);
 
-        // Ensure the contact belongs to the authenticated freelancer
         $this->authorize('restore', $contact);
 
         $contact->restore();
 
         return redirect()->route('contacts.index')->with('success', 'Contact restauré avec succès.');
+    }
+
+    /**
+     * Authorize that the contact belongs to the authenticated user.
+     */
+    protected function authorizeContact(Contact $contact)
+    {
+        if ($contact->freelancer_id !== Auth::id() && !Auth::user()->hasRole(['Admin', 'Super Admin'])) {
+            abort(403, 'Unauthorized action.');
+        }
     }
 }

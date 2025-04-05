@@ -42,7 +42,7 @@
                                 @endif
                             </td>
                             <td class="px-6 py-4 text-sm">
-                                <a href="{{ route('devis.create', ['rdv' => $rdv->id]) }}"
+                                <a href="{{ route('devis.create', ['rdvId' => $rdv->id]) }}"
                                     class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition">
                                     Créer un Devis
                                 </a>
