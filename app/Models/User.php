@@ -12,89 +12,51 @@ class User extends Authenticatable implements MustVerifyEmail
 {
     use HasFactory, Notifiable, HasRoles;
 
-    // Specify the guard name for Spatie roles and permissions
     protected $guard_name = 'web';
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
         'name',
         'email',
         'password',
-        'is_active', // Add this to allow mass assignment
+        'is_active',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var array<int, string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
-        'is_active' => 'boolean', // Cast the is_active column as a boolean
+        'is_active' => 'boolean',
     ];
 
-    // ============================
-    // Relationships
-    // ============================
-
-    /**
-     * A user (freelancer) has many contacts.
-     */
-
-    /**
-     * A user (freelancer) has many RDVs.
-     */
     public function rdvs()
     {
         return $this->hasMany(Rdv::class, 'freelancer_id');
     }
 
-    /**
-     * A user (account manager) manages many RDVs.
-     */
     public function managedRdvs()
     {
         return $this->hasMany(Rdv::class, 'manager_id');
     }
 
-    /**
-     * A user (freelancer) has many commissions.
-     */
     public function commissions()
     {
         return $this->hasMany(Commission::class, 'freelancer_id');
     }
 
-    /**
-     * A user (freelancer) has one abonnement.
-     */
     public function abonnement()
     {
         return $this->hasOne(Abonnement::class, 'freelancer_id');
     }
 
-    // ============================
-    // Scopes
-    // ============================
+    public function contacts()
+    {
+        return $this->hasMany(Contact::class, 'freelancer_id');
+    }
 
-    /**
-     * Scope: Filter users by role.
-     */
     public function scopeByRole($query, $role)
     {
         return $query->whereHas('roles', function ($q) use ($role) {
@@ -102,51 +64,18 @@ class User extends Authenticatable implements MustVerifyEmail
         });
     }
 
-    // ============================
-    // Accessors
-    // ============================
-
-    /**
-     * Get the user's full name.
-     */
     public function getFullNameAttribute()
     {
-        // Update this if you have separate first_name and last_name fields
-        return $this->name; // Adjust if needed (e.g., explode(' ', $this->name) for first/last name)
+        return $this->name;
     }
 
-    // ============================
-    // Utility Methods
-    // ============================
-
-    /**
-     * Check if the user has a specific role.
-     */
     public function hasRoleName($role)
     {
         return $this->hasRole($role);
     }
 
-
-
-    /**
-     * Assign a role to the user.
-     */
     public function assignUserRole($role)
     {
-        $this->assignRole($role); // Already provided by HasRoles trait
-    }
-
-    // Removed incorrect freelancer() relationship
-    // Replaced with a potential manager relationship if needed (commented below)
-
-    public function freelancer()
-    {
-        return $this->belongsTo(User::class, 'freelance_id');
-    }
-
-    public function contacts()
-    {
-        return $this->hasMany(Contact::class, 'freelancer_id');
+        $this->assignRole($role);
     }
 }

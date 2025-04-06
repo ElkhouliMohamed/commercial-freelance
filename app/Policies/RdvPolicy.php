@@ -42,7 +42,10 @@ class RdvPolicy
     public function update(User $user, Rdv $rdv)
     {
         return $user->hasRole(['Super Admin', 'Account Manager', 'Admin']) ||
-            ($user->hasRole('Freelancer') && $rdv->freelancer_id === $user->id);
+            ($user->hasRole('Freelancer') && (
+                $rdv->freelancer_id === $user->id || // They created it
+                $rdv->manager_id === $user->id        // They manage it
+            ));
     }
 
     /**
@@ -51,7 +54,10 @@ class RdvPolicy
     public function delete(User $user, Rdv $rdv)
     {
         return $user->hasRole(['Super Admin', 'Account Manager', 'Admin']) ||
-            ($user->hasRole('Freelancer') && $rdv->freelancer_id === $user->id);
+            ($user->hasRole('Freelancer') && (
+                $rdv->freelancer_id === $user->id || // They created it
+                $rdv->manager_id === $user->id        // They manage it
+            ));
     }
 
     /**

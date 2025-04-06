@@ -17,10 +17,7 @@ class RdvController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth', 'verified']);
-        $this->authorizeResource(Rdv::class, 'rdv', [
-            'except' => ['index']
-        ]);
+        $this->middleware('role:Freelancer|Account Manager|Admin|Super Admin');
     }
 
     /**

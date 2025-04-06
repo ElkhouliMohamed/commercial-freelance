@@ -1,8 +1,8 @@
 <?php
 
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\RdvController;
 use App\Http\Controllers\DevisController;
@@ -13,12 +13,12 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\PlanController;
 use App\Models\Plan;
 
-// Public Routes
+// 🌍 Public Routes
 Route::get('/', function () {
     return view('welcome');
 })->name('home');
 
-// Authentication Routes
+// 🔐 Authentication Routes
 Route::middleware(['guest'])->group(function () {
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
     Route::post('/register', [RegisteredUserController::class, 'store']);
@@ -26,21 +26,26 @@ Route::middleware(['guest'])->group(function () {
     Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 });
 
-// Plans View Route (Public)
+// 💳 Plans Public Page
 Route::get('/abonnements/plans', function () {
     $plans = Plan::all();
     return view('Abonnements.plans', compact('plans'));
 })->name('abonnements.plans');
 
-// Authenticated Routes
+// ✅ Authenticated Users
 Route::middleware(['auth'])->group(function () {
-    Route::get('/rdvs', [RdvController::class, 'index']);
+
+    // Common Logout
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
-    // Common Dashboard Route
+    // Common Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard')->middleware('verified');
 
-    // Contacts Routes - Accessible to all authenticated users for their own contacts
+    // ✅ Everyone can access RDVs
+    Route::resource('rdvs', RdvController::class)->middleware('can:manage rdvs');
+
+
+    // Contacts CRUD for all authenticated users
     Route::resource('contacts', ContactController::class)->except(['destroy']);
     Route::put('/contacts/restore/{contact}', [ContactController::class, 'restore'])
         ->name('contacts.restore')
@@ -49,49 +54,49 @@ Route::middleware(['auth'])->group(function () {
         ->name('contacts.destroy')
         ->middleware('can:delete,contact');
 
-    // Role-specific routes
+    // 👤 Freelancer-only routes
     Route::middleware(['role:Freelancer'])->group(function () {
         Route::get('/freelancer/dashboard', [DashboardController::class, 'index'])->name('freelancer.dashboard');
-        Route::resource('rdvs',  RdvController::class);
 
-        // Commission Routes
+        // Commissions
         Route::get('/commissions', [CommissionController::class, 'index'])->name('commissions.index');
         Route::get('/commissions/create', [CommissionController::class, 'create'])->name('commissions.create');
         Route::post('/commissions', [CommissionController::class, 'store'])->name('commissions.store');
     });
 
-    Route::middleware(['role:Freelancer|Account Manager|Admin|Super Admin'])->group(function () {
-        Route::resource('rdvs', RdvController::class);
-    });
-
+    // 👤 Account Manager routes
     Route::middleware(['role:Account Manager'])->group(function () {
         Route::get('/account-manager/dashboard', [DashboardController::class, 'index'])->name('account_manager.dashboard');
+
         Route::resource('devis', DevisController::class)->except(['create', 'show']);
-        Route::resource('rdvs', controller: RdvController::class);
         Route::get('/devis/create/{rdvId}', [DevisController::class, 'create'])->name('devis.create');
         Route::get('/devis/{devis}', [DevisController::class, 'show'])->name('devis.show');
         Route::put('/devis/{devis}/validate', [DevisController::class, 'validateDevis'])->name('devis.validate');
     });
 
+    // 👑 Super Admin routes
     Route::middleware(['role:Super Admin'])->group(function () {
         Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
 
-        // Subscription Management
+        // Subscriptions
         Route::resource('abonnements', AbonnementController::class);
         Route::get('/abonnements/active', [AbonnementController::class, 'active'])->name('abonnements.active');
-        Route::put('/abonnements/{abonnement}/reset-commission', [AbonnementController::class, 'resetCommission'])
-            ->name('abonnements.reset-commission');
+        Route::put('/abonnements/{abonnement}/reset-commission', [AbonnementController::class, 'resetCommission'])->name('abonnements.reset-commission');
 
-        // User Management
+        // Users
         Route::resource('users', UserController::class);
 
-        // Plan Management
+        // Plans
         Route::resource('plans', PlanController::class);
 
-        // Commission Approval
-        Route::put('/commissions/{commission}/approve', [CommissionController::class, 'approve'])
-            ->name('commissions.approve');
+        // Approve commissions
+        Route::put('/commissions/{commission}/approve', [CommissionController::class, 'approve'])->name('commissions.approve');
     });
+});
+
+// ✅ Optional: Verified-only RDVs (if needed again)
+Route::middleware(['auth', 'verified'])->group(function () {
+    // No need to repeat 'rdvs' route here again unless for extra logic
 });
 
 require __DIR__ . '/auth.php';
