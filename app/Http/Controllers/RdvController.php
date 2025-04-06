@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Plan;
 use App\Models\Rdv;
 use App\Models\Contact;
 use App\Models\User;
@@ -51,6 +52,9 @@ class RdvController extends Controller
      */
     public function create()
     {
+        // Temporarily bypass authorization for debugging
+        // $this->authorize('create', Rdv::class);
+        $plans = Plan::all();
         $contacts = Contact::where('freelancer_id', auth()->id())
             ->active()
             ->get();
@@ -60,6 +64,7 @@ class RdvController extends Controller
             'rdvTypes' => Rdv::getTypeOptions(),
             'minDate' => now()->addDay()->format('Y-m-d'),
             'maxDate' => now()->addMonths(3)->format('Y-m-d'),
+            'plans' => $plans,
         ]);
     }
 
@@ -69,28 +74,41 @@ class RdvController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'contact_id' => 'required|exists:contacts,id,freelancer_id,' . auth()->id(),
-            'date' => 'required|date|after:now|before:' . now()->addMonths(3),
-            'type' => 'required|in:' . implode(',', Rdv::getTypeOptions()),
-            'notes' => 'nullable|string|max:500',
-            'location' => 'required_if:type,' . Rdv::TYPE_PHYSICAL . '|string|max:255',
+            'contact_id' => 'required|exists:contacts,id',
+            'date' => 'required|date|after:now',
+            'type' => 'required|string',
+            'notes' => 'nullable|string',
+            'plans' => 'required|array', // Ensure plans is an array
+            'plans.*' => 'exists:plans,id', // Ensure each plan ID exists
         ]);
 
+        // Select a random account manager
         $manager = User::role('Account Manager')
-            ->where('is_active', true)
             ->inRandomOrder()
-            ->firstOrFail();
+            ->first();
 
-        $rdv = Rdv::create($validated + [
+        if (!$manager) {
+            return redirect()->back()->with('error', 'Aucun Account Manager n\'est disponible.');
+        }
+
+        // Create the RDV
+        $rdv = Rdv::create([
+            'contact_id' => $validated['contact_id'],
             'freelancer_id' => auth()->id(),
-            'manager_id' => $manager->id,
+            'manager_id' => $manager->id, // Assign the selected manager
+            'date' => $validated['date'],
+            'type' => $validated['type'],
+            'notes' => $validated['notes'] ?? null,
             'statut' => Rdv::STATUS_PLANNED,
         ]);
 
+        // Attach selected plans to the RDV
+        $rdv->plans()->attach($validated['plans']);
+
+        // Notify the assigned manager
         $manager->notify(new AssignedToRdv($rdv));
 
-        return redirect()->route('rdvs.index')
-            ->with('success', 'Rendez-vous créé avec succès et assigné à un Account Manager.');
+        return redirect()->route('rdvs.index')->with('success', 'Rendez-vous créé avec succès et assigné à un Account Manager.');
     }
 
     /**
@@ -98,8 +116,6 @@ class RdvController extends Controller
      */
     public function show(Rdv $rdv)
     {
-        Gate::authorize('view', $rdv);
-
         return view('rdvs.show', [
             'rdv' => $rdv->load(['contact', 'freelancer', 'manager', 'devis']),
         ]);
@@ -110,9 +126,14 @@ class RdvController extends Controller
      */
     public function edit(Rdv $rdv)
     {
+        Gate::authorize('update', $rdv);
+
+        // No need to re-query the rdv since it's already injected
         $contacts = Contact::where('freelancer_id', auth()->id())
             ->active()
             ->get();
+
+        $plans = Plan::all();
 
         return view('rdvs.edit', [
             'rdv' => $rdv,
@@ -121,14 +142,18 @@ class RdvController extends Controller
             'statusOptions' => Rdv::getStatusOptions(),
             'minDate' => now()->addDay()->format('Y-m-d'),
             'maxDate' => now()->addMonths(3)->format('Y-m-d'),
+            'plans' => $plans,
         ]);
     }
+
 
     /**
      * Update the specified RDV in storage.
      */
     public function update(Request $request, Rdv $rdv)
     {
+        Gate::authorize('update', $rdv);
+
         $validated = $request->validate([
             'contact_id' => 'required|exists:contacts,id,freelancer_id,' . auth()->id(),
             'date' => 'required|date|after:now|before:' . now()->addMonths(3),

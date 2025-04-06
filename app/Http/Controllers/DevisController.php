@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Devis;
 use App\Models\Contact;
+use App\Models\Plan;
 use App\Models\Rdv;
 use App\Models\User;
+use App\Models\Abonnement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +26,7 @@ class DevisController extends Controller
     {
         $this->authorizeRole(['Freelancer', 'Admin', 'Account Manager']);
 
-        $devis = Devis::with(['rdv', 'contact', 'freelancer', 'service'])->paginate(10);
+        $devis = Devis::with(['rdv', 'contact', 'freelancer', 'plans'])->paginate(10); // Changed from 'service' to 'plans'
 
         return view('devis.index', compact('devis'));
     }
@@ -36,9 +38,9 @@ class DevisController extends Controller
     {
         $rdv = Rdv::with(['contact', 'freelancer'])->findOrFail($rdvId);
         $freelancers = User::role('Freelancer')->get();
-        $services = Service::all(); // Assuming you have a Service model
+        $plans = Plan::all(); // Fetch all plans
 
-        return view('devis.create', compact('rdv', 'freelancers', 'services'));
+        return view('devis.create', compact('rdv', 'freelancers', 'plans'));
     }
 
     /**
@@ -46,18 +48,31 @@ class DevisController extends Controller
      */
     public function store(Request $request)
     {
+        Log::info('Storing Devis with data:', $request->all());
+
         $validated = $request->validate([
             'rdv_id' => 'required|exists:rdvs,id',
             'contact_id' => 'required|exists:contacts,id',
             'freelancer_id' => 'nullable|exists:users,id',
-            'service_id' => 'required|exists:services,id',
+            'plans' => 'required|array',
+            'plans.*' => 'exists:plans,id',
             'montant' => 'required|numeric|min:0',
             'statut' => 'required|string|in:Brouillon,En Attente,Accepté,Refusé,Annulé',
             'date_validite' => 'required|date|after:today',
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        Devis::create($validated);
+        $devis = Devis::create([
+            'rdv_id' => $validated['rdv_id'],
+            'contact_id' => $validated['contact_id'],
+            'freelancer_id' => $validated['freelancer_id'],
+            'montant' => $validated['montant'],
+            'statut' => $validated['statut'],
+            'date_validite' => $validated['date_validite'],
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        $devis->plans()->attach($validated['plans']);
 
         return redirect()->route('devis.index')->with('success', 'Devis créé avec succès.');
     }
@@ -68,9 +83,9 @@ class DevisController extends Controller
     public function edit(Devis $devis)
     {
         $freelancers = User::role('Freelancer')->get();
-        $services = Service::all();
+        $plans = Plan::all(); // Fetch all plans
 
-        return view('devis.edit', compact('devis', 'freelancers', 'services'));
+        return view('devis.edit', compact('devis', 'freelancers', 'plans'));
     }
 
     /**
@@ -80,14 +95,24 @@ class DevisController extends Controller
     {
         $validated = $request->validate([
             'freelancer_id' => 'nullable|exists:users,id',
-            'service_id' => 'required|exists:services,id',
             'montant' => 'required|numeric|min:0',
             'statut' => 'required|string|in:Brouillon,En Attente,Accepté,Refusé,Annulé',
             'date_validite' => 'required|date|after_or_equal:today',
             'notes' => 'nullable|string|max:1000',
+            'plans' => 'required|array', // Add plans to validation
+            'plans.*' => 'exists:plans,id', // Validate plan IDs
         ]);
 
-        $devis->update($validated);
+        $devis->update([
+            'freelancer_id' => $validated['freelancer_id'],
+            'montant' => $validated['montant'],
+            'statut' => $validated['statut'],
+            'date_validite' => $validated['date_validite'],
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        // Sync the plans (replace existing plans with new ones)
+        $devis->plans()->sync($validated['plans']);
 
         return redirect()->route('devis.index')->with('success', 'Devis mis à jour avec succès.');
     }
@@ -129,5 +154,21 @@ class DevisController extends Controller
     public function show(Devis $devis)
     {
         return view('devis.show', compact('devis'));
+    }
+
+    /**
+     * Validate the specified devis.
+     */
+    public function validateDevis(Devis $devis)
+    {
+        $devis->update(['statut' => 'validé']);
+
+        // Increment contracts_count for the associated abonnement
+        $abonnement = Abonnement::find($devis->abonnement_id);
+        if ($abonnement) {
+            $abonnement->increment('contracts_count');
+        }
+
+        return redirect()->route('devis.index')->with('success', 'Devis validé avec succès.');
     }
 }

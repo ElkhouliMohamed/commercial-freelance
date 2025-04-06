@@ -23,9 +23,9 @@ class DashboardController extends Controller
      */
     public function index()
     {
+
         $user = Auth::user();
-        
-        
+
         // Initialize the data array with default values
         $data = [
             'contacts' => 0,

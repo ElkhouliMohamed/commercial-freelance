@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Abonnement;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Support\Facades\Auth;
@@ -23,7 +24,11 @@ class AbonnementController extends Controller
 
     public function create()
     {
-        return view('abonnements.create');
+        // Fetch all users with the 'Freelancer' role
+        $freelancers = User::role('Freelancer')->get();
+
+        // Pass the freelancers to the view
+        return view('Abonnements.create', compact('freelancers'));
     }
 
     public function store(Request $request)
@@ -73,5 +78,33 @@ class AbonnementController extends Controller
     {
         $abonnements = Abonnement::where('date_fin', '>=', now())->get();
         return view('abonnements.active', compact('abonnements'));
+    }
+
+    public function calculateCommission()
+    {
+        $levels = [
+            ['level' => 'Bronze', 'min' => 1, 'max' => 10, 'commission' => 500],
+            ['level' => 'Argent', 'min' => 11, 'max' => 20, 'commission' => 1000],
+            ['level' => 'Or', 'min' => 21, 'max' => 30, 'commission' => 1500],
+            ['level' => 'Platine', 'min' => 31, 'max' => PHP_INT_MAX, 'commission' => 2000],
+        ];
+
+        foreach ($levels as $level) {
+            if ($this->contracts_count >= $level['min'] && $this->contracts_count <= $level['max']) {
+                return [
+                    'level' => $level['level'],
+                    'commission' => $level['commission'],
+                ];
+            }
+        }
+
+        return ['level' => 'None', 'commission' => 0];
+    }
+
+    public function resetCommission(Abonnement $abonnement)
+    {
+        $abonnement->update(['contracts_count' => 0]);
+
+        return redirect()->route('abonnements.index')->with('success', 'Commission réinitialisée avec succès.');
     }
 }

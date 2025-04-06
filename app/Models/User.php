@@ -24,6 +24,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'password',
+        'is_active', // Add this to allow mass assignment
     ];
 
     /**
@@ -44,6 +45,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'is_active' => 'boolean', // Cast the is_active column as a boolean
     ];
 
     // ============================
@@ -53,10 +55,6 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * A user (freelancer) has many contacts.
      */
-    public function contacts()
-    {
-        return $this->hasMany(Contact::class, 'freelancer_id');
-    }
 
     /**
      * A user (freelancer) has many RDVs.
@@ -126,8 +124,10 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function hasRoleName($role)
     {
-        return $this->hasRole($role); // Already provided by HasRoles trait
+        return $this->hasRole($role);
     }
+
+
 
     /**
      * Assign a role to the user.
@@ -139,10 +139,14 @@ class User extends Authenticatable implements MustVerifyEmail
 
     // Removed incorrect freelancer() relationship
     // Replaced with a potential manager relationship if needed (commented below)
-    /*
+
     public function freelancer()
     {
         return $this->belongsTo(User::class, 'freelance_id');
     }
-    */
+
+    public function contacts()
+    {
+        return $this->hasMany(Contact::class, 'freelancer_id');
+    }
 }

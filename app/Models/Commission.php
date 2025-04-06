@@ -15,8 +15,10 @@ class Commission extends Model
         'description',
         'statut',
         'demande_paiement',
+        'level'
     ];
 
+    // Relationship to Freelancer
     public function freelancer()
     {
         return $this->belongsTo(User::class, 'freelancer_id');

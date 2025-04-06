@@ -48,11 +48,13 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap flex space-x-2">
                                 <!-- Create Devis Button -->
+                                @role('Super Admin|Account Manager')
                                 <a href="{{ route('devis.create', ['rdvId' => $rdv->id]) }}"
                                     class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50">
                                     Créer un Devis
                                 </a>
-
+                                @endrole
+                                @role('Freelancer|Super Admin')
                                 <!-- Edit Button -->
                                 <a href="{{ route('rdvs.edit', $rdv->id) }}"
                                     class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50">
@@ -68,7 +70,9 @@
                                         onclick="return confirm('Confirmer la suppression ?')">
                                         Supprimer
                                     </button>
+                                
                                 </form>
+                                @endrole
                             </td>
                         </tr>
                     @empty

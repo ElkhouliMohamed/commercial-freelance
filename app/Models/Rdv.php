@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Carbon\Carbon;
 
 class Rdv extends Model
@@ -124,6 +125,15 @@ class Rdv extends Model
     public function devis(): HasOne
     {
         return $this->hasOne(Devis::class);
+    }
+
+    /**
+     * RDV belongs to many plans.
+     */
+    public function plans(): BelongsToMany
+    {
+        return $this->belongsToMany(Plan::class, 'rdv_plan', 'rdv_id', 'plan_id')
+            ->withTimestamps();
     }
 
     // ============================
@@ -257,4 +267,32 @@ class Rdv extends Model
         $this->statut = self::STATUS_COMPLETED;
         return $this->save();
     }
+
+    /**
+     * Determine if the user can view any RDV.
+     */
+    public function viewAny(User $user)
+    {
+        return $user->hasRole(['Account Manager', 'Freelancer', 'Admin', 'Super Admin']);
+    }
+
+    /**
+     * Get paginated RDVs based on user role.
+     */
+    public static function getPaginatedRdvs(User $user)
+    {
+        return self::query()
+            ->when($user->hasRole('Freelancer'), function ($query) use ($user) {
+                $query->where('freelancer_id', $user->id);
+            })
+            ->when($user->hasRole('Account Manager'), function ($query) use ($user) {
+                $query->where('manager_id', $user->id);
+            })
+            ->orWhere(function ($query) use ($user) {
+                $query->where('freelancer_id', $user->id)
+                      ->orWhere('manager_id', $user->id);
+            })
+            ->paginate(10);
+    }
+    
 }

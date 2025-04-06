@@ -24,6 +24,7 @@
                     <th class="px-6 py-3 text-left text-sm font-semibold">Plan</th>
                     <th class="px-6 py-3 text-left text-sm font-semibold">Date Début</th>
                     <th class="px-6 py-3 text-left text-sm font-semibold">Date Fin</th>
+                    <th class="px-6 py-3 text-left text-sm font-semibold">Commission</th> <!-- New Column -->
                     <th class="px-6 py-3 text-left text-sm font-semibold">Actions</th>
                 </tr>
             </thead>
@@ -34,6 +35,12 @@
                         <td class="px-6 py-4">{{ $abonnement->plan }}</td>
                         <td class="px-6 py-4">{{ $abonnement->date_debut->format('d/m/Y') }}</td>
                         <td class="px-6 py-4">{{ $abonnement->date_fin->format('d/m/Y') }}</td>
+                        <td class="px-6 py-4">
+                            @php
+                                $commission = $abonnement->calculateCommission();
+                            @endphp
+                            {{ $commission['level'] }} ({{ $commission['commission'] }} MAD)
+                        </td> <!-- Display Commission -->
                         <td class="px-6 py-4 flex space-x-2">
                             <!-- Edit Button -->
                             <a href="{{ route('abonnements.edit', $abonnement->id) }}" class="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 transition">
@@ -52,7 +59,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                        <td colspan="6" class="px-6 py-4 text-center text-gray-500">
                             Aucun abonnement trouvé.
                         </td>
                     </tr>

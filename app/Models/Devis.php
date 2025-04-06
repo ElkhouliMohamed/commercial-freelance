@@ -14,10 +14,9 @@ class Devis extends Model
     protected $fillable = [
         'rdv_id',        // Link to the appointment
         'contact_id',    // Link to the contact
-        'freelancer_id', // Link to the freelancer (corrected from 'freelance_id')
-        'service_id',    // Link to the service
+        'freelancer_id', // Link to the freelancer
         'montant',       // Total amount of the quote
-        'statut',        // Status (Draft, Valid, Expired, etc.)
+        'statut',        // Status (Draft, Pending, Accepted, Rejected, Cancelled, etc.)
         'date_validite', // Validity date
         'notes',         // Notes or comments
     ];
@@ -57,11 +56,11 @@ class Devis extends Model
     }
 
     /**
-     * Relationship: Devis belongs to a Service.
+     * Relationship: Devis belongs to many Plans.
      */
-    public function service()
+    public function plans()
     {
-        return $this->belongsTo(Service::class, 'service_id');
+        return $this->belongsToMany(Plan::class, 'devis_plan', 'devis_id', 'plan_id')->withTimestamps();
     }
 
     /**

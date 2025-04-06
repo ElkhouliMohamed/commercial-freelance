@@ -53,6 +53,40 @@ class UserController extends Controller
     }
 
     /**
+     * Edit the specified user.
+     */
+    public function edit($id)
+    {
+        $user = User::findOrFail($id); // Fetch the user by ID
+        $roles = Role::all(); // Fetch all roles (if applicable)
+
+        return view('users.edit', compact('user', 'roles')); // Return the edit view
+    }
+
+    /**
+     * Update the specified user in storage.
+     */
+    public function update(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:users,email,' . $id,
+            'role' => 'required|string|exists:roles,name',
+        ]);
+
+        $user = User::findOrFail($id);
+        $user->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+        ]);
+
+        // Update the user's role
+        $user->syncRoles([$validated['role']]);
+
+        return redirect()->route('users.index')->with('success', 'Utilisateur mis à jour avec succès.');
+    }
+
+    /**
      * Remove the specified user from storage.
      */
     public function destroy(User $user)

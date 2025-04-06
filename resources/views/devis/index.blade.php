@@ -5,12 +5,7 @@
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-4xl font-extrabold text-gray-900 border-b-2 border-gray-200 pb-2">Liste des Devis</h1>
 
-            @role('Admin|Account Manager')
-                <a href="{{ route('devis.create', ['rdvId' => 1]) }}"
-                    class="bg-gray-800 text-white px-6 py-2 rounded-lg shadow-md hover:bg-gray-700 transition duration-200 ease-in-out transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50">
-                    Ajouter un Devis
-                </a>
-            @endrole
+            
         </div>
 
         <!-- Devis Table -->
