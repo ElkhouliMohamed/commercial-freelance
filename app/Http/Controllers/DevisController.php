@@ -74,16 +74,32 @@ class DevisController extends Controller
             return back()->with('error', 'Un devis existe déjà pour ce rendez-vous.');
         }
 
-        $rdv = Rdv::with('freelancer')->find($validated['rdv_id']);
+        $rdv = Rdv::with('freelancer')->findOrFail($validated['rdv_id']);
         $freelancerId = $validated['freelancer_id'] ?? $rdv->freelancer_id;
 
-        $freelancer = User::find($freelancerId);
-        if (!$freelancer || !$freelancer->hasRole('Freelancer')) {
+        if (!$freelancerId) {
+            abort(400, 'No freelancer assigned to this RDV or in the request.');
+        }
+
+        $freelancer = User::findOrFail($freelancerId);
+        if (!$freelancer->hasRole('Freelancer')) {
             abort(403, 'Le freelancer sélectionné n\'est pas valide.');
         }
 
+        $freelancerDevisCount = $freelancer->devis()->count();
+        $commissionAmount = 0;
+
+        if ($freelancerDevisCount <= 10) {
+            $commissionAmount = 500;
+        } elseif ($freelancerDevisCount <= 20) {
+            $commissionAmount = 1000;
+        } elseif ($freelancerDevisCount <= 30) {
+            $commissionAmount = 1500;
+        } else {
+            $commissionAmount = 2000;
+        }
+
         $commissionRate = $validated['commission_rate'] ?? 20;
-        $commissionAmount = ($validated['montant'] * $commissionRate) / 100;
 
         $devis = Devis::create([
             'rdv_id' => $validated['rdv_id'],

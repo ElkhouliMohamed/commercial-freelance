@@ -18,14 +18,21 @@ class ContactController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 10);
-        $contacts = Auth::user()->contacts()
-            ->where('statut', 'actif') // Filtrer uniquement les contacts actifs
-            ->latest()
-            ->paginate($perPage);
+
+        if (Auth::user()->hasRole('Super Admin')) {
+            // Super Admin can see all contacts
+            $contacts = Contact::where('statut', 'actif')
+                ->latest()
+                ->paginate($perPage);
+        } else {
+            $contacts = Auth::user()->contacts()
+                ->where('statut', 'actif')
+                ->latest()
+                ->paginate($perPage);
+        }
 
         return view('contacts.index', compact('contacts'));
     }
-
     public function create()
     {
         return view('contacts.create');

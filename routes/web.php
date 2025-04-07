@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\SuperadminController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
@@ -75,6 +76,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/commissions', [CommissionController::class, 'index'])->name('commissions.index');
         Route::get('/commissions/create', [CommissionController::class, 'create'])->name('commissions.create');
         Route::post('/commissions', [CommissionController::class, 'store'])->name('commissions.store');
+        Route::get('/commissions/{commission}', [CommissionController::class, 'show'])->name('commissions.show');
     });
 
     /**
@@ -93,13 +95,22 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/devis/{devis}/validate', [DevisController::class, 'validateDevis'])->name('devis.validate');
     });
 
+    Route::middleware(['role:Account Manager|Admin'])->group(function () {
+        Route::prefix('commissions')->group(function () {
+            Route::get('/approval', [CommissionController::class, 'approvalIndex'])->name('commissions.approval');
+            Route::put('/{commission}/approve', [CommissionController::class, 'approve'])->name('commissions.approve');
+            Route::get('/{commission}/proof', [CommissionController::class, 'showProof'])->name('commissions.showProof');
+            Route::put('/{commission}/reject', [CommissionController::class, 'reject'])->name('commissions.reject');
+        });
+    });
+
     /**
      * 👑 Super Admin Routes
      * Routes accessible only to users with the Super Admin role.
      */
     Route::middleware(['role:Super Admin'])->group(function () {
         Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
-
+        Route::get('/data', [SuperadminController::class, 'index'])->name('admin.data');
         // Subscriptions Management
         Route::resource('abonnements', AbonnementController::class);
         Route::get('/abonnements/active', [AbonnementController::class, 'active'])->name('abonnements.active');

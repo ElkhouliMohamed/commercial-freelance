@@ -59,4 +59,5 @@ class ContactPolicy
     {
         return $user->hasPermissionTo('manage contacts') && $user->id === $contact->freelancer_id;
     }
+    
 }

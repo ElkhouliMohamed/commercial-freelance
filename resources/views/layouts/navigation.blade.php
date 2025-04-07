@@ -66,6 +66,16 @@
             </li>
         @endrole
 
+        @role('Super Admin')
+            <li>
+                <a href="{{ route('admin.data') }}"
+                    class="flex items-center px-4 py-3 rounded-lg hover:bg-gray-800 hover:text-yellow-400 transition">
+                    <i class="fas fa-database text-xl"></i>
+                    <span class="ml-3 menu-text">Data </span>
+                </a>
+            </li>
+        @endrole
+
 
 
         @role('Super Admin')
