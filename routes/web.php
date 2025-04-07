@@ -44,7 +44,6 @@ Route::middleware(['auth'])->group(function () {
     // ✅ Everyone can access RDVs
     Route::resource('rdvs', RdvController::class)->middleware('can:manage rdvs');
 
-
     // Contacts CRUD for all authenticated users
     Route::resource('contacts', ContactController::class)->except(['destroy']);
     Route::put('/contacts/restore/{contact}', [ContactController::class, 'restore'])
@@ -68,7 +67,10 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['role:Account Manager'])->group(function () {
         Route::get('/account-manager/dashboard', [DashboardController::class, 'index'])->name('account_manager.dashboard');
 
-        Route::resource('devis', DevisController::class)->except(['create', 'show']);
+        // 🔧 Fix resource route parameter name
+        Route::resource('devis', DevisController::class, ['parameters' => ['devis' => 'devis']])
+            ->except(['create', 'show']);
+
         Route::get('/devis/create/{rdvId}', [DevisController::class, 'create'])->name('devis.create');
         Route::get('/devis/{devis}', [DevisController::class, 'show'])->name('devis.show');
         Route::put('/devis/{devis}/validate', [DevisController::class, 'validateDevis'])->name('devis.validate');
@@ -92,11 +94,6 @@ Route::middleware(['auth'])->group(function () {
         // Approve commissions
         Route::put('/commissions/{commission}/approve', [CommissionController::class, 'approve'])->name('commissions.approve');
     });
-});
-
-// ✅ Optional: Verified-only RDVs (if needed again)
-Route::middleware(['auth', 'verified'])->group(function () {
-    // No need to repeat 'rdvs' route here again unless for extra logic
 });
 
 require __DIR__ . '/auth.php';

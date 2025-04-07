@@ -7,6 +7,8 @@ use App\Models\Devis;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class CommissionController extends Controller
 {
@@ -21,112 +23,150 @@ class CommissionController extends Controller
     {
         $this->middleware('auth');
         $this->middleware('role:Freelancer', ['only' => ['create', 'store']]);
-/*************  ✨ Windsurf Command ⭐  *************/
-    /**
-     * Show the form for creating a new commission.
-     *
-     * @return \Illuminate\View\View
-     */
-
-/*******  fdbf2b83-f76e-4a4e-afcb-93d67b308f52  *******/        $this->middleware('role:Account Manager', ['only' => ['approve']]);
+        $this->middleware('role:Account Manager|Admin', ['only' => ['approve']]);
     }
 
+    /**
+     * Display a listing of commissions.
+     */
     public function index()
     {
         $user = Auth::user();
+        $commissions = $user->hasRole('Freelancer')
+            ? $user->commissions()->with('freelancer')->latest()->get()
+            : Commission::with('freelancer')->latest()->paginate(15);
 
-        if ($user->hasRole('Freelancer')) {
-            $commissions = $user->commissions()->latest()->get();
-        } else {
-            $commissions = Commission::with('freelancer')->latest()->get();
-        }
+        $stats = $this->getCommissionStats($commissions);
 
-        return view('commissions.index', compact('commissions'));
+        return view('commissions.index', compact('commissions', 'stats'));
     }
 
+    /**
+     * Show the form for creating a new commission.
+     */
     public function create()
     {
         $contractCount = $this->getValidContractCount();
-        $commissionLevel = $this->getCommissionLevel($contractCount);
 
-        if (!$commissionLevel) {
+        if ($contractCount < 1) {
             return redirect()->route('commissions.index')
-                ->with('error', 'Vous avez besoin d\'au moins 1 contrat validé pour demander une commission.');
+                ->with('warning', 'Vous avez besoin d\'au moins 1 contrat validé pour demander une commission.');
         }
 
-        return view('commissions.create', [
-            'contractCount' => $contractCount,
-            'commissionLevel' => $commissionLevel,
-            'eligibleAmount' => $commissionLevel['fixed_amount']
-        ]);
+        $commissionLevel = $this->getCommissionLevel($contractCount);
+        $hasPendingCommission = Auth::user()->commissions()
+            ->where('statut', 'en attente')
+            ->exists();
+
+        return view('commissions.create', compact('contractCount', 'commissionLevel', 'hasPendingCommission'));
     }
 
+    /**
+     * Store a newly created commission in storage.
+     */
     public function store(Request $request)
     {
         $contractCount = $this->getValidContractCount();
         $commissionLevel = $this->getCommissionLevel($contractCount);
 
         if (!$commissionLevel) {
-            return back()->with('error', 'Vous n\'avez pas assez de contrats pour demander une commission.');
+            return back()->with('error', 'Conditions non remplies pour demander une commission.');
         }
 
-        // Check if freelancer already has a pending commission
-        $pendingCommission = Auth::user()->commissions()
-            ->where('statut', 'en attente')
-            ->exists();
-
-        if ($pendingCommission) {
-            return back()->with('error', 'Vous avez déjà une demande de commission en attente.');
+        if (Auth::user()->commissions()->where('statut', 'en attente')->exists()) {
+            return back()->with('error', 'Une demande de commission est déjà en attente.');
         }
 
-        Commission::create([
+        $commission = Commission::create([
             'freelancer_id' => Auth::id(),
             'montant' => $commissionLevel['fixed_amount'],
-            'description' => "Commission {$commissionLevel['name']} pour {$contractCount} contrats",
+            'description' => "Commission {$commissionLevel['name']} - {$contractCount} contrats validés",
             'statut' => 'en attente',
             'niveau' => $commissionLevel['name'],
             'nombre_contrats' => $contractCount,
         ]);
 
+        Log::channel('commissions')->info('Nouvelle commission créée', [
+            'id' => $commission->id,
+            'freelancer' => Auth::user()->name,
+            'montant' => $commission->montant,
+            'contrats' => $contractCount
+        ]);
+
         return redirect()->route('commissions.index')
-            ->with('success', 'Demande de commission envoyée avec succès.');
+            ->with('success', 'Votre demande de commission a été enregistrée.');
     }
 
+    /**
+     * Approve a commission and store payment proof.
+     */
     public function approve(Request $request, Commission $commission)
     {
         $request->validate([
             'proof' => 'required|file|mimes:pdf,jpg,png|max:2048',
+            'payment_date' => 'required|date',
         ]);
 
-        // Store the payment proof
-        $path = $request->file('proof')->store('payment_proofs');
+        $filename = Str::uuid() . '.' . $request->file('proof')->extension();
+        $path = $request->file('proof')->storeAs('payment_proofs', $filename);
 
         $commission->update([
-            'statut' => 'validé',
+            'statut' => 'payé',
             'payment_proof_path' => $path,
+            'payment_date' => $request->payment_date,
             'approved_by' => Auth::id(),
             'approved_at' => now(),
         ]);
 
-        // Reset all devis counts for this freelancer
+        // Reset commission counter for this freelancer
         Devis::where('freelancer_id', $commission->freelancer_id)
+            ->where('compte_pour_commission', true)
             ->update(['compte_pour_commission' => false]);
 
-        // Send notification to freelancer (to be implemented)
-        // Notification::send($commission->freelancer, new CommissionApproved($commission));
+        // Notification au freelancer
+        event(new CommissionApproved($commission));
+
+        Log::channel('commissions')->notice('Commission approuvée', [
+            'id' => $commission->id,
+            'approbateur' => Auth::user()->name,
+            'montant' => $commission->montant
+        ]);
 
         return redirect()->route('commissions.index')
-            ->with('success', 'Commission approuvée et compteur remis à zéro.');
+            ->with('success', 'Paiement confirmé et compteur remis à zéro.');
     }
 
+    /**
+     * Display the payment proof file.
+     */
     public function showProof(Commission $commission)
     {
         $this->authorize('view', $commission);
 
+        if (!Storage::exists($commission->payment_proof_path)) {
+            abort(404);
+        }
+
         return response()->file(storage_path('app/' . $commission->payment_proof_path));
     }
 
-    private function getValidContractCount()
+    /**
+     * Get commission statistics.
+     */
+    private function getCommissionStats($commissions)
+    {
+        return [
+            'total' => $commissions->sum('montant'),
+            'pending' => $commissions->where('statut', 'en attente')->count(),
+            'paid' => $commissions->where('statut', 'payé')->count(),
+            'levels' => array_count_values($commissions->pluck('niveau')->toArray())
+        ];
+    }
+
+    /**
+     * Get the count of valid contracts for the authenticated freelancer.
+     */
+    private function getValidContractCount(): int
     {
         return Devis::where('freelancer_id', Auth::id())
             ->where('compte_pour_commission', true)
@@ -134,13 +174,16 @@ class CommissionController extends Controller
             ->count();
     }
 
-    private function getCommissionLevel($contractCount)
+    /**
+     * Determine the commission level based on contract count.
+     */
+    public function getCommissionLevel(int $contractCount): ?array
     {
         foreach (self::COMMISSION_LEVELS as $name => $level) {
-            if (
-                $contractCount >= $level['min_contracts'] &&
-                (empty($level['max_contracts']) || $contractCount <= $level['max_contracts'])
-            ) {
+            $minCondition = $contractCount >= $level['min_contracts'];
+            $maxCondition = !isset($level['max_contracts']) || $contractCount <= $level['max_contracts'];
+
+            if ($minCondition && $maxCondition) {
                 return ['name' => $name] + $level;
             }
         }

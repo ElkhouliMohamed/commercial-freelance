@@ -5,92 +5,155 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Log;
 
 class Devis extends Model
 {
     use HasFactory, SoftDeletes;
 
-    // Fillable attributes for mass assignment
     protected $fillable = [
-        'rdv_id',        // Link to the appointment
-        'contact_id',    // Link to the contact
-        'freelancer_id', // Link to the freelancer
-        'montant',       // Total amount of the quote
-        'statut',        // Status (Draft, Pending, Accepted, Rejected, Cancelled, etc.)
-        'date_validite', // Validity date
-        'notes',         // Notes or comments
+        'rdv_id',
+        'contact_id',
+        'freelancer_id',
+        'montant',
+        'commission_rate',
+        'commission',
+        'statut',
+        'date_validite',
+        'notes',
+        'compte_pour_commission',
     ];
 
-    // Casts for data types
     protected $casts = [
         'montant' => 'float',
         'date_validite' => 'date',
         'statut' => 'string',
+        'compte_pour_commission' => 'boolean',
     ];
 
-    // Dates to handle (including soft deletes)
     protected $dates = ['deleted_at', 'date_validite'];
 
-    /**
-     * Relationship: Devis belongs to an RDV.
-     */
+    protected $attributes = [
+        'statut' => 'Brouillon',
+        'compte_pour_commission' => false,
+    ];
+
     public function rdv()
     {
         return $this->belongsTo(Rdv::class, 'rdv_id');
     }
 
-    /**
-     * Relationship: Devis belongs to a Contact.
-     */
     public function contact()
     {
         return $this->belongsTo(Contact::class, 'contact_id');
     }
 
-    /**
-     * Relationship: Devis belongs to a Freelancer (User).
-     */
     public function freelancer()
     {
         return $this->belongsTo(User::class, 'freelancer_id');
     }
 
-    /**
-     * Relationship: Devis belongs to many Plans.
-     */
     public function plans()
     {
         return $this->belongsToMany(Plan::class, 'devis_plan', 'devis_id', 'plan_id')->withTimestamps();
     }
 
-    /**
-     * Scope: Filter devis by status.
-     */
     public function scopeByStatus($query, $status)
     {
         return $query->where('statut', $status);
     }
 
-    /**
-     * Scope: Filter devis by validity date.
-     */
     public function scopeValid($query)
     {
         return $query->where('date_validite', '>=', now());
     }
 
-    /**
-     * Scope: Filter devis by freelancer.
-     */
     public function scopeByFreelancer($query, $freelancerId)
     {
         return $query->where('freelancer_id', $freelancerId);
     }
 
-    /**
-     * Default status for new records.
-     */
-    protected $attributes = [
-        'statut' => 'Brouillon',
-    ];
+    protected static function booted()
+    {
+        static::created(function ($devis) {
+            Log::info('Devis created', [
+                'devis_id' => $devis->id,
+                'statut' => $devis->statut,
+                'freelancer_id' => $devis->freelancer_id,
+            ]);
+            if ($devis->statut === 'validé') {
+                $devis->updateCommission();
+            }
+        });
+
+        static::updated(function ($devis) {
+            Log::info('Devis updated', [
+                'devis_id' => $devis->id,
+                'original_statut' => $devis->getOriginal('statut'),
+                'new_statut' => $devis->statut,
+                'freelancer_id' => $devis->freelancer_id,
+            ]);
+            if ($devis->isDirty('statut') && $devis->statut === 'validé') {
+                $devis->updateCommission();
+            }
+        });
+    }
+
+    public function updateCommission()
+    {
+        Log::info('Checking commission update', [
+            'devis_id' => $this->id,
+            'compte_pour_commission' => $this->compte_pour_commission,
+            'freelancer_id' => $this->freelancer_id,
+        ]);
+
+        if (!$this->compte_pour_commission) {
+            $this->update(['compte_pour_commission' => true]);
+
+            $freelancer = $this->freelancer;
+            if ($freelancer) {
+                $commissionController = new \App\Http\Controllers\CommissionController();
+                $contractCount = $commissionController->getValidContractCountForFreelancer($freelancer->id);
+                $commissionLevel = $commissionController->getCommissionLevel($contractCount);
+
+                Log::info('Commission calculation', [
+                    'freelancer_id' => $freelancer->id,
+                    'contract_count' => $contractCount,
+                    'commission_level' => $commissionLevel,
+                ]);
+
+                if ($commissionLevel) {
+                    $existingCommission = $freelancer->commissions()
+                        ->where('statut', 'en attente')
+                        ->first();
+
+                    if ($existingCommission) {
+                        $existingCommission->update([
+                            'montant' => $commissionLevel['fixed_amount'],
+                            'description' => "Commission {$commissionLevel['name']} pour {$contractCount} contrats",
+                            'niveau' => $commissionLevel['name'],
+                            'nombre_contrats' => $contractCount,
+                        ]);
+                        Log::info('Updated existing commission', ['commission_id' => $existingCommission->id]);
+                    } else {
+                        $newCommission = Commission::create([
+                            'freelancer_id' => $freelancer->id,
+                            'montant' => $commissionLevel['fixed_amount'],
+                            'description' => "Commission {$commissionLevel['name']} pour {$contractCount} contrats",
+                            'statut' => 'en attente',
+                            'niveau' => $commissionLevel['name'],
+                            'nombre_contrats' => $contractCount,
+                        ]);
+                        Log::info('Created new commission', ['commission_id' => $newCommission->id]);
+                    }
+                } else {
+                    Log::warning('No commission level found', ['contract_count' => $contractCount]);
+                }
+            } else {
+                Log::warning('No freelancer found for devis', ['devis_id' => $this->id]);
+            }
+        } else {
+            Log::info('Devis already counted for commission', ['devis_id' => $this->id]);
+        }
+    }
 }

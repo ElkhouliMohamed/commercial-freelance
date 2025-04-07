@@ -42,11 +42,6 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Rdv::class, 'manager_id');
     }
 
-    public function commissions()
-    {
-        return $this->hasMany(Commission::class, 'freelancer_id');
-    }
-
     public function abonnement()
     {
         return $this->hasOne(Abonnement::class, 'freelancer_id');
@@ -77,5 +72,9 @@ class User extends Authenticatable implements MustVerifyEmail
     public function assignUserRole($role)
     {
         $this->assignRole($role);
+    }
+    public function commissions()
+    {
+        return $this->hasMany(Commission::class, 'freelancer_id');
     }
 }

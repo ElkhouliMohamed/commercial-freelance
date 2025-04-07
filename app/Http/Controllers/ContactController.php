@@ -18,7 +18,10 @@ class ContactController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 10);
-        $contacts = Auth::user()->contacts()->withTrashed()->latest()->paginate($perPage);
+        $contacts = Auth::user()->contacts()
+            ->where('statut', 'actif') // Filtrer uniquement les contacts actifs
+            ->latest()
+            ->paginate($perPage);
 
         return view('contacts.index', compact('contacts'));
     }
@@ -33,7 +36,7 @@ class ContactController extends Controller
         $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255|unique:contacts,email',
+            'email' => 'nullable|email|max:255',
             'telephone' => 'nullable|string|max:20',
             'adresse' => 'nullable|string|max:255',
             'nom_entreprise' => 'nullable|string|max:255',

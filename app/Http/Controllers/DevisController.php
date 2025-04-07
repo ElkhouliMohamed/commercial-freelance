@@ -26,7 +26,15 @@ class DevisController extends Controller
     {
         $this->authorizeRole(['Freelancer', 'Admin', 'Account Manager']);
 
-        $devis = Devis::with(['rdv', 'contact', 'freelancer', 'plans'])->paginate(10); // Changed from 'service' to 'plans'
+        if (auth()->user()->hasRole('Freelancer')) {
+            // Freelancers can only see Devis assigned to them
+            $devis = Devis::with(['rdv', 'contact', 'freelancer', 'plans'])
+                ->where('freelancer_id', auth()->id())
+                ->paginate(10);
+        } else {
+            // Admins and Account Managers can see all Devis
+            $devis = Devis::with(['rdv', 'contact', 'freelancer', 'plans'])->paginate(10);
+        }
 
         return view('devis.index', compact('devis'));
     }
@@ -57,16 +65,34 @@ class DevisController extends Controller
             'plans' => 'required|array',
             'plans.*' => 'exists:plans,id',
             'montant' => 'required|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:100',
             'statut' => 'required|string|in:Brouillon,En Attente,Accepté,Refusé,Annulé',
             'date_validite' => 'required|date|after:today',
             'notes' => 'nullable|string|max:1000',
         ]);
 
+        if (Devis::where('rdv_id', $validated['rdv_id'])->exists()) {
+            return back()->with('error', 'Un devis existe déjà pour ce rendez-vous.');
+        }
+
+        $rdv = Rdv::with('freelancer')->find($validated['rdv_id']);
+        $freelancerId = $validated['freelancer_id'] ?? $rdv->freelancer_id;
+
+        $freelancer = User::find($freelancerId);
+        if (!$freelancer || !$freelancer->hasRole('Freelancer')) {
+            abort(403, 'Le freelancer sélectionné n\'est pas valide.');
+        }
+
+        $commissionRate = $validated['commission_rate'] ?? 20; // Taux par défaut : 20%
+        $commissionAmount = ($validated['montant'] * $commissionRate) / 100;
+
         $devis = Devis::create([
             'rdv_id' => $validated['rdv_id'],
             'contact_id' => $validated['contact_id'],
-            'freelancer_id' => $validated['freelancer_id'],
+            'freelancer_id' => $freelancerId,
             'montant' => $validated['montant'],
+            'commission_rate' => $commissionRate,
+            'commission' => $commissionAmount,
             'statut' => $validated['statut'],
             'date_validite' => $validated['date_validite'],
             'notes' => $validated['notes'] ?? null,
@@ -76,6 +102,8 @@ class DevisController extends Controller
 
         return redirect()->route('devis.index')->with('success', 'Devis créé avec succès.');
     }
+
+
 
     /**
      * Show the form for editing the specified devis.
