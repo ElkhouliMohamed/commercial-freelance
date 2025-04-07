@@ -19,8 +19,15 @@ class Commission extends Model
     ];
 
     // Relationship to Freelancer
+    
     public function freelancer()
     {
         return $this->belongsTo(User::class, 'freelancer_id');
     }
+
+    public function devis()
+    {
+        return $this->belongsTo(Devis::class, 'devis_id');
+    }
+    
 }

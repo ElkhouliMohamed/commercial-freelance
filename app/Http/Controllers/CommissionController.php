@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Events\CommissionApproved; // Ensure this event exists
 
 class CommissionController extends Controller
 {
@@ -23,18 +24,19 @@ class CommissionController extends Controller
     {
         $this->middleware('auth');
         $this->middleware('role:Freelancer', ['only' => ['create', 'store']]);
-        $this->middleware('role:Account Manager|Admin', ['only' => ['approve']]);
+        $this->middleware('role:Account Manager|Admin', ['only' => ['approve', 'showProof']]);
     }
 
     /**
-     * Display a listing of commissions.
+     * Display a listing of commissions for the authenticated user.
      */
     public function index()
     {
         $user = Auth::user();
-        $commissions = $user->hasRole('Freelancer')
-            ? $user->commissions()->with('freelancer')->latest()->get()
-            : Commission::with('freelancer')->latest()->paginate(15);
+        $commissions = Commission::where('freelancer_id', $user->id)
+            ->with('devis') // Eager load devis for additional context
+            ->orderBy('created_at', 'desc')
+            ->paginate(10); // Paginate for better performance
 
         $stats = $this->getCommissionStats($commissions);
 
@@ -55,8 +57,13 @@ class CommissionController extends Controller
 
         $commissionLevel = $this->getCommissionLevel($contractCount);
         $hasPendingCommission = Auth::user()->commissions()
-            ->where('statut', 'en attente')
+            ->where('statut', 'En Attente') // Standardized to match DevisController
             ->exists();
+
+        if ($hasPendingCommission) {
+            return redirect()->route('commissions.index')
+                ->with('warning', 'Une demande de commission est déjà en attente.');
+        }
 
         return view('commissions.create', compact('contractCount', 'commissionLevel', 'hasPendingCommission'));
     }
@@ -73,15 +80,11 @@ class CommissionController extends Controller
             return back()->with('error', 'Conditions non remplies pour demander une commission.');
         }
 
-        if (Auth::user()->commissions()->where('statut', 'en attente')->exists()) {
-            return back()->with('error', 'Une demande de commission est déjà en attente.');
-        }
-
         $commission = Commission::create([
             'freelancer_id' => Auth::id(),
             'montant' => $commissionLevel['fixed_amount'],
             'description' => "Commission {$commissionLevel['name']} - {$contractCount} contrats validés",
-            'statut' => 'en attente',
+            'statut' => 'En Attente', // Standardized status
             'niveau' => $commissionLevel['name'],
             'nombre_contrats' => $contractCount,
         ]);
@@ -90,11 +93,11 @@ class CommissionController extends Controller
             'id' => $commission->id,
             'freelancer' => Auth::user()->name,
             'montant' => $commission->montant,
-            'contrats' => $contractCount
+            'contrats' => $contractCount,
         ]);
 
         return redirect()->route('commissions.index')
-            ->with('success', 'Votre demande de commission a été enregistrée.');
+            ->with('success', 'Votre demande de commission a été enregistrée avec succès.');
     }
 
     /**
@@ -102,38 +105,45 @@ class CommissionController extends Controller
      */
     public function approve(Request $request, Commission $commission)
     {
+        $this->authorize('approve', $commission); // Ensure policy or gate is defined
+
         $request->validate([
             'proof' => 'required|file|mimes:pdf,jpg,png|max:2048',
-            'payment_date' => 'required|date',
+            'payment_date' => 'required|date|after_or_equal:now',
         ]);
 
-        $filename = Str::uuid() . '.' . $request->file('proof')->extension();
-        $path = $request->file('proof')->storeAs('payment_proofs', $filename);
+        try {
+            $filename = Str::uuid() . '.' . $request->file('proof')->extension();
+            $path = $request->file('proof')->storeAs('payment_proofs', $filename, 'public');
 
-        $commission->update([
-            'statut' => 'payé',
-            'payment_proof_path' => $path,
-            'payment_date' => $request->payment_date,
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
-        ]);
+            $commission->update([
+                'statut' => 'Payé', // Standardized status
+                'payment_proof_path' => $path,
+                'payment_date' => $request->payment_date,
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
 
-        // Reset commission counter for this freelancer
-        Devis::where('freelancer_id', $commission->freelancer_id)
-            ->where('compte_pour_commission', true)
-            ->update(['compte_pour_commission' => false]);
+            // Reset commission counter for this freelancer
+            Devis::where('freelancer_id', $commission->freelancer_id)
+                ->where('compte_pour_commission', true)
+                ->update(['compte_pour_commission' => false]);
 
-        // Notification au freelancer
-        event(new CommissionApproved($commission));
+            // Fire event for notification
+            event(new CommissionApproved($commission));
 
-        Log::channel('commissions')->notice('Commission approuvée', [
-            'id' => $commission->id,
-            'approbateur' => Auth::user()->name,
-            'montant' => $commission->montant
-        ]);
+            Log::channel('commissions')->notice('Commission approuvée', [
+                'id' => $commission->id,
+                'approbateur' => Auth::user()->name,
+                'montant' => $commission->montant,
+            ]);
 
-        return redirect()->route('commissions.index')
-            ->with('success', 'Paiement confirmé et compteur remis à zéro.');
+            return redirect()->route('commissions.index')
+                ->with('success', 'Paiement confirmé et compteur remis à zéro.');
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de l\'approbation de la commission: ' . $e->getMessage());
+            return back()->with('error', 'Une erreur s’est produite lors de la confirmation du paiement.');
+        }
     }
 
     /**
@@ -141,13 +151,13 @@ class CommissionController extends Controller
      */
     public function showProof(Commission $commission)
     {
-        $this->authorize('view', $commission);
+        $this->authorize('viewProof', $commission); // Ensure policy or gate is defined
 
-        if (!Storage::exists($commission->payment_proof_path)) {
-            abort(404);
+        if (!$commission->payment_proof_path || !Storage::disk('public')->exists($commission->payment_proof_path)) {
+            abort(404, 'Preuve de paiement non trouvée.');
         }
 
-        return response()->file(storage_path('app/' . $commission->payment_proof_path));
+        return response()->file(storage_path('app/public/' . $commission->payment_proof_path));
     }
 
     /**
@@ -155,11 +165,16 @@ class CommissionController extends Controller
      */
     private function getCommissionStats($commissions)
     {
+        // Filter out null values before counting
+        $levels = array_filter($commissions->pluck('niveau')->toArray(), function ($value) {
+            return !is_null($value);
+        });
+
         return [
-            'total' => $commissions->sum('montant'),
-            'pending' => $commissions->where('statut', 'en attente')->count(),
-            'paid' => $commissions->where('statut', 'payé')->count(),
-            'levels' => array_count_values($commissions->pluck('niveau')->toArray())
+            'total_amount' => $commissions->sum('montant'),
+            'pending' => $commissions->where('statut', 'En Attente')->count(),
+            'paid' => $commissions->where('statut', 'Payé')->count(),
+            'levels' => array_count_values($levels) // Now only contains valid values
         ];
     }
 
@@ -169,15 +184,15 @@ class CommissionController extends Controller
     private function getValidContractCount(): int
     {
         return Devis::where('freelancer_id', Auth::id())
+            ->where('statut', 'validé') // Match DevisController status
             ->where('compte_pour_commission', true)
-            ->where('statut', 'validé')
             ->count();
     }
 
     /**
      * Determine the commission level based on contract count.
      */
-    public function getCommissionLevel(int $contractCount): ?array
+    private function getCommissionLevel(int $contractCount): ?array
     {
         foreach (self::COMMISSION_LEVELS as $name => $level) {
             $minCondition = $contractCount >= $level['min_contracts'];

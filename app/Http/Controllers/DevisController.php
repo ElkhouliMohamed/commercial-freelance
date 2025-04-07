@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\Rdv;
 use App\Models\User;
 use App\Models\Abonnement;
+use App\Models\Commission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -27,12 +28,10 @@ class DevisController extends Controller
         $this->authorizeRole(['Freelancer', 'Admin', 'Account Manager']);
 
         if (auth()->user()->hasRole('Freelancer')) {
-            // Freelancers can only see Devis assigned to them
             $devis = Devis::with(['rdv', 'contact', 'freelancer', 'plans'])
                 ->where('freelancer_id', auth()->id())
                 ->paginate(10);
         } else {
-            // Admins and Account Managers can see all Devis
             $devis = Devis::with(['rdv', 'contact', 'freelancer', 'plans'])->paginate(10);
         }
 
@@ -46,7 +45,7 @@ class DevisController extends Controller
     {
         $rdv = Rdv::with(['contact', 'freelancer'])->findOrFail($rdvId);
         $freelancers = User::role('Freelancer')->get();
-        $plans = Plan::all(); // Fetch all plans
+        $plans = Plan::all();
 
         return view('devis.create', compact('rdv', 'freelancers', 'plans'));
     }
@@ -83,7 +82,7 @@ class DevisController extends Controller
             abort(403, 'Le freelancer sélectionné n\'est pas valide.');
         }
 
-        $commissionRate = $validated['commission_rate'] ?? 20; // Taux par défaut : 20%
+        $commissionRate = $validated['commission_rate'] ?? 20;
         $commissionAmount = ($validated['montant'] * $commissionRate) / 100;
 
         $devis = Devis::create([
@@ -100,24 +99,15 @@ class DevisController extends Controller
 
         $devis->plans()->attach($validated['plans']);
 
+        if ($validated['statut'] === 'Accepté') {
+            $this->handleAcceptedStatus($devis);
+        }
+
         return redirect()->route('devis.index')->with('success', 'Devis créé avec succès.');
     }
 
-
-
     /**
-     * Show the form for editing the specified devis.
-     */
-    public function edit(Devis $devis)
-    {
-        $freelancers = User::role('Freelancer')->get();
-        $plans = Plan::all(); // Fetch all plans
-
-        return view('devis.edit', compact('devis', 'freelancers', 'plans'));
-    }
-
-    /**
-     * Update the specified devis in storage.
+     * Update the specified devis in storage and handle commission if status changes to "Accepté".
      */
     public function update(Request $request, Devis $devis)
     {
@@ -127,9 +117,11 @@ class DevisController extends Controller
             'statut' => 'required|string|in:Brouillon,En Attente,Accepté,Refusé,Annulé',
             'date_validite' => 'required|date|after_or_equal:today',
             'notes' => 'nullable|string|max:1000',
-            'plans' => 'required|array', // Add plans to validation
-            'plans.*' => 'exists:plans,id', // Validate plan IDs
+            'plans' => 'required|array',
+            'plans.*' => 'exists:plans,id',
         ]);
+
+        $oldStatus = $devis->statut;
 
         $devis->update([
             'freelancer_id' => $validated['freelancer_id'],
@@ -139,8 +131,13 @@ class DevisController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
-        // Sync the plans (replace existing plans with new ones)
         $devis->plans()->sync($validated['plans']);
+
+        if ($validated['statut'] === 'Accepté' && $oldStatus !== 'Accepté') {
+            $this->handleAcceptedStatus($devis);
+        } else {
+            $this->updateCommission($devis);
+        }
 
         return redirect()->route('devis.index')->with('success', 'Devis mis à jour avec succès.');
     }
@@ -155,7 +152,7 @@ class DevisController extends Controller
 
             Log::info("Deleting devis with ID: " . $devis->id);
 
-            $devis->delete(); // Soft delete instead of forceDelete
+            $devis->delete();
 
             Log::info("Devis soft deleted successfully.");
 
@@ -167,13 +164,14 @@ class DevisController extends Controller
     }
 
     /**
-     * Authorize the user based on roles.
+     * Show the form for editing the specified devis.
      */
-    private function authorizeRole(array $roles)
+    public function edit(Devis $devis)
     {
-        if (!auth()->user()->hasAnyRole($roles)) {
-            abort(403, 'Accès non autorisé.');
-        }
+        $freelancers = User::role('Freelancer')->get();
+        $plans = Plan::all();
+
+        return view('devis.edit', compact('devis', 'freelancers', 'plans'));
     }
 
     /**
@@ -191,12 +189,81 @@ class DevisController extends Controller
     {
         $devis->update(['statut' => 'validé']);
 
-        // Increment contracts_count for the associated abonnement
         $abonnement = Abonnement::find($devis->abonnement_id);
         if ($abonnement) {
             $abonnement->increment('contracts_count');
         }
 
+        if ($devis->statut === 'validé') {
+            $this->handleAcceptedStatus($devis);
+        }
+
         return redirect()->route('devis.index')->with('success', 'Devis validé avec succès.');
+    }
+
+    /**
+     * Authorize the user based on roles.
+     */
+    private function authorizeRole(array $roles)
+    {
+        if (!auth()->user()->hasAnyRole($roles)) {
+            abort(403, 'Accès non autorisé.');
+        }
+    }
+
+    /**
+     * Update the commission for the specified devis.
+     */
+    public function updateCommission(Devis $devis)
+    {
+        $freelancer = $devis->freelancer;
+
+        if ($freelancer && $devis->montant) {
+            $commissionRate = $devis->commission_rate ?? 20;
+            $commissionAmount = ($devis->montant * $commissionRate) / 100;
+            $devis->update(['commission' => $commissionAmount]);
+
+            Log::info('Commission updated for Devis:', [
+                'devis_id' => $devis->id,
+                'freelancer_id' => $freelancer->id,
+                'commission' => $commissionAmount,
+            ]);
+        }
+    }
+
+    /**
+     * Handle logic when devis status is set to "Accepté" or "validé".
+     */
+    private function handleAcceptedStatus(Devis $devis)
+    {
+        if (!$devis->freelancer_id) {
+            Log::warning('No freelancer assigned to devis ID: ' . $devis->id);
+            return;
+        }
+
+        $commissionRate = $devis->commission_rate ?? 20;
+        $commissionAmount = ($devis->montant * $commissionRate) / 100;
+
+        $commission = Commission::updateOrCreate(
+            ['devis_id' => $devis->id],
+            [
+                'freelancer_id' => $devis->freelancer_id,
+                'montant' => $commissionAmount,
+                'description' => 'Commission for accepted devis #' . $devis->id,
+                'statut' => 'En Attente',
+                'demande_paiement' => false,
+                'level' => 'standard',
+            ]
+        );
+
+        Log::info('Commission created/updated for Devis:', [
+            'devis_id' => $devis->id,
+            'freelancer_id' => $devis->freelancer_id,
+            'commission_amount' => $commissionAmount,
+        ]);
+
+        if ($devis->rdv) {
+            $devis->rdv->update(['statut' => 'confirmé']);
+        }
     }
 }

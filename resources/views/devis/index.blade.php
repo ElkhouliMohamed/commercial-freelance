@@ -4,8 +4,6 @@
     <div class="container mx-auto px-4 py-8 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-4xl font-extrabold text-gray-900 border-b-2 border-gray-200 pb-2">Liste des Devis</h1>
-
-            
         </div>
 
         <!-- Devis Table -->
@@ -51,17 +49,18 @@
                                         class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50">
                                         Modifier
                                     </a>
-
-                                    <!-- Delete Button -->
-                                    <form action="{{ route('devis.destroy', $devi->id) }}" method="POST" class="inline-block">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit"
-                                            class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50"
-                                            onclick="return confirm('Confirmer la suppression ?')">
-                                            Supprimer
-                                        </button>
-                                    </form>
+                                    @if($devi->statut != 'Accepté')
+                                        <!-- Delete Button -->
+                                        <form action="{{ route('devis.destroy', $devi->id) }}" method="POST" class="inline-block">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit"
+                                                class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50"
+                                                onclick="return confirm('Confirmer la suppression ?')">
+                                                Supprimer
+                                            </button>
+                                        </form>
+                                    @endif
                                 @endrole
                             </td>
                         </tr>

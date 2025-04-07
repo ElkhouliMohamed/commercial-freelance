@@ -185,4 +185,5 @@ class Rdv extends Model
             })
             ->paginate(10);
     }
+    
 }

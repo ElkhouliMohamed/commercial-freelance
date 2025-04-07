@@ -23,7 +23,7 @@
                         <td class="border px-4 py-2">{{ number_format($commission->commission, 2) }} MAD</td>
                         <td class="border px-4 py-2">{{ $commission->statut }}</td>
                         <td class="border px-4 py-2">
-                            @if($commission->statut === 'en attente' && Auth::user()->hasRole('Admin|Super Admin'))
+                            @if($commission->statut === 'En Attente' && Auth::user()->hasRole('Admin|Super Admin'))
                                 <form action="{{ route('commissions.approve', $commission) }}" method="POST" class="inline">
                                     @csrf
                                     <button type="submit" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-2 rounded">Approuver</button>
@@ -36,7 +36,7 @@
                         <td colspan="5" class="text-center py-4 text-gray-500">Aucune commission trouvée.</td>
                     </tr>
                 @endforelse
-            </tbody>
+            </tbody>a
         </table>
     </div>
 </div>

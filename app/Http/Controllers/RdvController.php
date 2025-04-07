@@ -9,9 +9,12 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Notifications\AssignedToRdv;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use App\Notifications\RdvUpdated;
 use App\Notifications\RdvCancelled;
+use App\Notifications\RdvConfirmed;
+use App\Notifications\RdvCompleted;
 
 class RdvController extends Controller
 {
@@ -27,14 +30,15 @@ class RdvController extends Controller
     {
         $user = auth()->user();
         $rdvs = Rdv::query()
-            ->with(['contact', 'freelancer', 'manager'])
+            ->with(['contact', 'freelancer', 'manager', 'devis']) // Load devis to check existence
             ->when($user->hasRole('Freelancer'), function ($query) use ($user) {
                 return $query->where('freelancer_id', $user->id);
             })
             ->when($user->hasRole('Account Manager'), function ($query) use ($user) {
                 return $query->where('manager_id', $user->id);
             })
-            ->orderBy('date', 'asc')
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM devis WHERE devis.rdv_id = rdvs.id) THEN 1 ELSE 0 END') // RDVs without devis first
+            ->orderBy('date', 'asc') // Secondary sort by date
             ->paginate(10);
 
         return view('rdvs.index', [
@@ -49,8 +53,6 @@ class RdvController extends Controller
      */
     public function create()
     {
-        // Temporarily bypass authorization for debugging
-        // $this->authorize('create', Rdv::class);
         $plans = Plan::all();
         $contacts = Contact::where('freelancer_id', auth()->id())
             ->active()
@@ -75,11 +77,10 @@ class RdvController extends Controller
             'date' => 'required|date|after:now',
             'type' => 'required|string',
             'notes' => 'nullable|string',
-            'plans' => 'required|array', // Ensure plans is an array
-            'plans.*' => 'exists:plans,id', // Ensure each plan ID exists
+            'plans' => 'required|array',
+            'plans.*' => 'exists:plans,id',
         ]);
 
-        // Select a random account manager
         $manager = User::role('Account Manager')
             ->inRandomOrder()
             ->first();
@@ -88,21 +89,18 @@ class RdvController extends Controller
             return redirect()->back()->with('error', 'Aucun Account Manager n\'est disponible.');
         }
 
-        // Create the RDV
         $rdv = Rdv::create([
             'contact_id' => $validated['contact_id'],
             'freelancer_id' => auth()->id(),
-            'manager_id' => $manager->id, // Assign the selected manager
+            'manager_id' => $manager->id,
             'date' => $validated['date'],
             'type' => $validated['type'],
             'notes' => $validated['notes'] ?? null,
             'statut' => Rdv::STATUS_PLANNED,
         ]);
 
-        // Attach selected plans to the RDV
         $rdv->plans()->attach($validated['plans']);
 
-        // Notify the assigned manager
         $manager->notify(new AssignedToRdv($rdv));
 
         return redirect()->route('rdvs.index')->with('success', 'Rendez-vous créé avec succès et assigné à un Account Manager.');
@@ -125,7 +123,6 @@ class RdvController extends Controller
     {
         Gate::authorize('update', $rdv);
 
-        // No need to re-query the rdv since it's already injected
         $contacts = Contact::where('freelancer_id', auth()->id())
             ->active()
             ->get();
@@ -142,7 +139,6 @@ class RdvController extends Controller
             'plans' => $plans,
         ]);
     }
-
 
     /**
      * Update the specified RDV in storage.
@@ -163,7 +159,6 @@ class RdvController extends Controller
         $originalStatus = $rdv->statut;
         $rdv->update($validated);
 
-        // Notify stakeholders about important changes
         if ($originalStatus !== $rdv->statut) {
             $this->handleStatusChangeNotification($rdv, $originalStatus);
         } else {
@@ -198,7 +193,14 @@ class RdvController extends Controller
      */
     public function destroy(Rdv $rdv)
     {
+        Gate::authorize('delete', $rdv);
+
+        Log::info('Deleting RDV', ['rdv_id' => $rdv->id]);
+
         $rdv->delete();
+
+        $remainingDevis = Devis::where('rdv_id', $rdv->id)->count();
+        Log::info('Devis remaining after RDV deletion', ['count' => $remainingDevis]);
 
         return redirect()->route('rdvs.index')
             ->with('success', 'Rendez-vous supprimé avec succès.');

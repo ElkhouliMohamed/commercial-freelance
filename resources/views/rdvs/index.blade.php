@@ -18,50 +18,66 @@
                         <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Contact</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Date</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Type</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Statut</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Statut RDV</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Devis Status</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     @forelse($rdvs as $rdv)
                         <tr class="hover:bg-gray-50 transition duration-150">
-                            <td class="px-6 py-4 whitespace-nowrap">{{ $rdv->contact->nom }} {{ $rdv->contact->prenom }}
-                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">{{ $rdv->contact->nom }} {{ $rdv->contact->prenom }}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 {{ \Carbon\Carbon::parse($rdv->date)->format('d/m/Y H:i') }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">{{ $rdv->type }}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 @php
-                                    $statusColor =
-                                        [
-                                            'planifié' => 'bg-blue-100 text-blue-800',
-                                            'annulé' => 'bg-red-100 text-red-800',
-                                            'confirmé' => 'bg-green-100 text-green-800',
-                                            'terminé' => 'bg-purple-100 text-purple-800',
-                                        ][strtolower($rdv->statut)] ?? 'bg-gray-100 text-gray-800';
+                                    $statusColor = [
+                                        'planifié' => 'bg-blue-100 text-blue-800',
+                                        'annulé' => 'bg-red-100 text-red-800',
+                                        'confirmé' => 'bg-green-100 text-green-800',
+                                        'terminé' => 'bg-purple-100 text-purple-800',
+                                    ][strtolower($rdv->statut)] ?? 'bg-gray-100 text-gray-800';
                                 @endphp
-                                <span
-                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusColor }}">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusColor }}">
                                     {{ ucfirst($rdv->statut) }}
                                 </span>
                             </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                @php
+                                    $devisCollection = $rdv->devis ?? collect();
+                                    if ($devisCollection instanceof \App\Models\Devis) {
+                                        $devisCollection = collect([$devisCollection]);
+                                    }
+                                    $hasAcceptedDevis = $devisCollection->contains('statut', 'Accepté');
+                                @endphp
+
+                                @if ($devisCollection->isNotEmpty())
+                                    <span class="text-sm text-green-600">Avec Devis</span>
+                                    @foreach ($devisCollection as $devis)
+                                        <p class="text-xs text-gray-500">Statut: {{ $devis->statut }}, Montant: {{ number_format($devis->montant, 2) }} €</p>
+                                    @endforeach
+                                @else
+                                    <span class="text-sm text-red-600">Sans Devis</span>
+                                @endif
+                            </td>
                             <td class="px-6 py-4 whitespace-nowrap flex space-x-2">
-                                <!-- Create Devis Button -->
                                 @role('Super Admin|Account Manager')
+                                @if(!$hasAcceptedDevis)
                                 <a href="{{ route('devis.create', ['rdvId' => $rdv->id]) }}"
                                     class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50">
                                     Créer un Devis
                                 </a>
+                                @endif
                                 @endrole
                                 @role('Freelancer|Super Admin')
-                                <!-- Edit Button -->
+                                @if(!$hasAcceptedDevis)
                                 <a href="{{ route('rdvs.edit', $rdv->id) }}"
                                     class="bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-opacity-50">
                                     Modifier
                                 </a>
 
-                                <!-- Delete Button -->
                                 <form action="{{ route('rdvs.destroy', $rdv->id) }}" method="POST" class="inline-block">
                                     @csrf
                                     @method('DELETE')
@@ -70,14 +86,14 @@
                                         onclick="return confirm('Confirmer la suppression ?')">
                                         Supprimer
                                     </button>
-                                
                                 </form>
+                                @endif
                                 @endrole
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-6 py-4 text-center text-gray-500 text-lg">
+                            <td colspan="6" class="px-6 py-4 text-center text-gray-500 text-lg">
                                 Aucun rendez-vous trouvé.
                             </td>
                         </tr>
@@ -86,7 +102,7 @@
             </table>
         </div>
 
-        <!-- Pagination (if applicable) -->
+        <!-- Pagination -->
         @if ($rdvs->hasPages())
             <div class="mt-6">
                 {{ $rdvs->links() }}
